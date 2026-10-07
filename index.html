@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NewAPI Token Manager</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      const entry = window.location.hash === "#floating" ? "/src/floating.ts" : "/src/main.ts";
+      const script = document.createElement("script");
+      script.type = "module";
+      script.src = entry;
+      document.body.appendChild(script);
+    </script>
+  </body>
+</html>

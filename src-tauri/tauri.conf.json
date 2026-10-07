@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NewAPI Desk",
+  "version": "0.1.0",
+  "identifier": "com.newapi.desk",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "NewAPI Desk",
+        "width": 1180,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 620,
+        "resizable": true
+      },
+      {
+        "label": "floating",
+        "url": "index.html#floating",
+        "title": "令牌分组",
+        "width": 360,
+        "height": 520,
+        "minWidth": 320,
+        "minHeight": 420,
+        "visible": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "decorations": true,
+        "transparent": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost https:; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  }
+}
