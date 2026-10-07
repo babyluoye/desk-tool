@@ -2,12 +2,12 @@
 
 ## 当前阶段
 
-- 阶段：阶段 5，Gitea Windows x64 构建工作流
+- 阶段：阶段 6，修复 CI 中 Tauri 版本不一致
 - 状态：已完成
 - 开始时间：2025-02-14
 - 完成时间：2025-02-14
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 下一阶段：阶段 6，实际 CI runner 验证
+- 下一阶段：阶段 7，实际 CI runner 验证
 
 ## 已完成阶段
 
@@ -195,6 +195,32 @@
 - `IMPLEMENTATION_STATUS.md`
 
 本阶段未执行构建、测试、开发服务器或运行验证。
+
+### 阶段 6：修复 CI 中 Tauri 版本不一致
+
+状态：已完成
+
+问题：
+
+- GitHub Actions 中 npm 实际安装了 `@tauri-apps/api 2.12.1`。
+- Rust 侧 `tauri` 和 `tauri-build` 仍声明为 `2.0.0`。
+- Tauri CLI 检测到 Rust crate 与 npm 包的 major/minor 版本不一致并终止构建。
+
+修复：
+
+- `@tauri-apps/api` 固定为 `2.12.1`。
+- `@tauri-apps/cli` 固定为 `2.12.1`。
+- Rust `tauri` 固定为 `=2.12.1`。
+- Rust `tauri-build` 固定为 `=2.12.1`。
+- 已静态确认项目中不再存在旧的 `2.0.0` Tauri 版本声明。
+
+本阶段修改文件：
+
+- `package.json`
+- `src-tauri/Cargo.toml`
+- `IMPLEMENTATION_STATUS.md`
+
+本阶段未执行构建或测试；需要在 GitHub/Gitea Windows runner 上重新手动触发工作流验证。
 
 ## 待确认事项
 
