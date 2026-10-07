@@ -2,12 +2,12 @@
 
 ## 当前阶段
 
-- 阶段：阶段 8，修复 tauri-build 依赖版本
+- 阶段：阶段 9，修复 Windows 构建图标缺失
 - 状态：已完成
 - 开始时间：2025-02-14
 - 完成时间：2025-02-14
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 下一阶段：阶段 9，实际 CI runner 验证
+- 下一阶段：阶段 10，实际 CI runner 验证
 
 ## 已完成阶段
 
@@ -265,6 +265,32 @@
 - `IMPLEMENTATION_STATUS.md`
 
 本地未执行构建或测试；需要重新手动运行 GitHub Actions 验证。
+
+### 阶段 9：修复 Windows 构建图标缺失
+
+状态：已完成
+
+问题：
+
+- Tauri Windows 构建需要 `src-tauri/icons/icon.ico`。
+- 仓库没有图标文件，`tauri-build` 在生成 Windows Resource 文件时失败。
+
+修复：
+
+- 新增 `scripts/generate-icon.ps1`，使用 PowerShell 标准库生成最小 32x32 ICO 文件。
+- `tauri.conf.json` 配置 `icons/icon.ico`。
+- GitHub Actions 和 Gitea Actions 均在 Tauri 构建前生成图标。
+- 不依赖 ImageMagick 等额外图像工具，也不需要提交二进制图标。
+
+本阶段修改文件：
+
+- `scripts/generate-icon.ps1`
+- `src-tauri/tauri.conf.json`
+- `.github/workflows/build-windows-x64.yml`
+- `.gitea/workflows/build-windows-x64.yml`
+- `IMPLEMENTATION_STATUS.md`
+
+本地未执行构建；需要重新手动运行 GitHub Actions 验证。
 
 ## 待确认事项
 

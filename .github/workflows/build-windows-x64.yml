@@ -40,6 +40,10 @@ jobs:
         shell: pwsh
         run: npm install
 
+      - name: Generate Windows application icon
+        shell: pwsh
+        run: ./scripts/generate-icon.ps1
+
       - name: Build Tauri Windows bundle
         shell: pwsh
         run: npm run tauri -- build --target $env:RUST_TARGET
