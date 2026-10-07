@@ -2,12 +2,12 @@
 
 ## 当前阶段
 
-- 阶段：阶段 9，修复 Windows 构建图标缺失
+- 阶段：阶段 10，修复 Rust HTTP 响应类型错误
 - 状态：已完成
 - 开始时间：2025-02-14
 - 完成时间：2025-02-14
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 下一阶段：阶段 10，实际 CI runner 验证
+- 下一阶段：阶段 11，实际 CI runner 验证
 
 ## 已完成阶段
 
@@ -291,6 +291,29 @@
 - `IMPLEMENTATION_STATUS.md`
 
 本地未执行构建；需要重新手动运行 GitHub Actions 验证。
+
+### 阶段 10：修复 Rust HTTP 响应类型错误
+
+状态：已完成
+
+问题：
+
+- `reqwest::RequestBuilder::send().await` 返回 `reqwest::Response`。
+- `newapi.rs` 错误地将请求链直接声明为 `ApiResponse<T>`，导致 `?` 报 `E0308` 类型不匹配。
+- Tauri 托盘 API `menu_on_left_click` 同时产生弃用警告。
+
+修复：
+
+- 先接收 `reqwest::Response`，再传入 `parse_response` 解析为 `ApiResponse<T>`。
+- 替换为 `show_menu_on_left_click`。
+
+本阶段修改文件：
+
+- `src-tauri/src/newapi.rs`
+- `src-tauri/src/lib.rs`
+- `IMPLEMENTATION_STATUS.md`
+
+本地未执行构建或测试；需要重新手动运行 GitHub Actions 验证。
 
 ## 待确认事项
 

@@ -62,7 +62,7 @@ impl NewApiClient {
         let mut tokens = Vec::new();
 
         loop {
-            let response: ApiResponse<TokenPage> = self
+            let response = self
                 .request(self.http.get(self.url("/api/token/")))
                 .query(&[("p", page), ("size", TOKEN_PAGE_SIZE)])
                 .send()
@@ -84,7 +84,7 @@ impl NewApiClient {
     }
 
     pub async fn fetch_groups(&self) -> Result<Vec<TokenGroup>, AppError> {
-        let response: ApiResponse<Vec<String>> = self
+        let response = self
             .request(self.http.get(self.url("/api/group/")))
             .send()
             .await
