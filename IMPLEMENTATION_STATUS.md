@@ -2,12 +2,12 @@
 
 ## 当前阶段
 
-- 阶段：阶段 7，修复前端 DOM 根节点空值收窄错误
+- 阶段：阶段 8，修复 tauri-build 依赖版本
 - 状态：已完成
 - 开始时间：2025-02-14
 - 完成时间：2025-02-14
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 下一阶段：阶段 8，实际 CI runner 验证
+- 下一阶段：阶段 9，实际 CI runner 验证
 
 ## 已完成阶段
 
@@ -243,6 +243,28 @@
 - `IMPLEMENTATION_STATUS.md`
 
 本地未执行构建或类型检查；应重新手动运行 GitHub Actions 验证。
+
+### 阶段 8：修复 tauri-build 依赖版本
+
+状态：已完成
+
+问题：
+
+- CI 已通过前端 Vite 构建和 Tauri npm/Rust major-minor 检查。
+- Cargo 依赖解析失败，因为 crates.io 没有 `tauri-build = 2.12.1`。
+- Tauri 2.12.1 发布批次对应的 `tauri-build` 版本为 `2.7.1`。
+
+修复：
+
+- `tauri` 保持 `=2.12.1`，与 `@tauri-apps/api 2.12.1` 的 major/minor 对齐。
+- `tauri-build` 改为已发布的 `2.7.1`，使用兼容的宽版本约束。
+
+本阶段修改文件：
+
+- `src-tauri/Cargo.toml`
+- `IMPLEMENTATION_STATUS.md`
+
+本地未执行构建或测试；需要重新手动运行 GitHub Actions 验证。
 
 ## 待确认事项
 
