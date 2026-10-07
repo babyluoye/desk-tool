@@ -173,8 +173,8 @@
 
 已完成：
 
-- 新增 `.gitea/workflows/build-windows-x64.yml`。
-- 仅支持手动触发 `workflow_dispatch`，不会因分支或标签推送自动构建。
+- 新增 `.gitea/workflows/build-windows-x64.yml` 和 `.github/workflows/build-windows-x64.yml`。
+- 两份工作流均仅支持手动触发 `workflow_dispatch`，不会因分支或标签推送自动构建。
 - 构建目标固定为 `x86_64-pc-windows-msvc`。
 - 在 Windows runner 上准备 Node.js 22 和 Rust stable/MSVC target。
 - 使用 `npm install` 安装前端依赖。
@@ -191,6 +191,7 @@
 本阶段修改文件：
 
 - `.gitea/workflows/build-windows-x64.yml`
+- `.github/workflows/build-windows-x64.yml`
 - `IMPLEMENTATION_STATUS.md`
 
 本阶段未执行构建、测试、开发服务器或运行验证。
