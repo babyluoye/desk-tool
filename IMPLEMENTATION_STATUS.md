@@ -2,12 +2,12 @@
 
 ## 当前阶段
 
-- 阶段：阶段 6，修复 CI 中 Tauri 版本不一致
+- 阶段：阶段 7，修复前端 DOM 根节点空值收窄错误
 - 状态：已完成
 - 开始时间：2025-02-14
 - 完成时间：2025-02-14
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 下一阶段：阶段 7，实际 CI runner 验证
+- 下一阶段：阶段 8，实际 CI runner 验证
 
 ## 已完成阶段
 
@@ -221,6 +221,28 @@
 - `IMPLEMENTATION_STATUS.md`
 
 本阶段未执行构建或测试；需要在 GitHub/Gitea Windows runner 上重新手动触发工作流验证。
+
+### 阶段 7：修复前端 DOM 根节点空值收窄错误
+
+状态：已完成
+
+问题：
+
+- GitHub Actions 的 TypeScript 构建报告 `app` 和 `root` 可能为 `null`。
+- 初次判空之后的闭包函数中，TypeScript 未保留对原变量的非空收窄。
+
+修复：
+
+- 对 `main.ts` 和 `floating.ts` 的 DOM 根节点分别判空。
+- 判空后赋值给独立常量，供渲染函数和事件回调安全引用。
+
+本阶段修改文件：
+
+- `src/main.ts`
+- `src/floating.ts`
+- `IMPLEMENTATION_STATUS.md`
+
+本地未执行构建或类型检查；应重新手动运行 GitHub Actions 验证。
 
 ## 待确认事项
 

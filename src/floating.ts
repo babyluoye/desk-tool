@@ -3,8 +3,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { appApi } from "./api";
 import type { ApiToken, AppSnapshot, TokenGroup } from "./domain";
 
-const root = document.querySelector<HTMLDivElement>("#app");
-if (!root) throw new Error("Application root was not found");
+const rootElement = document.querySelector<HTMLDivElement>("#app");
+if (!rootElement) throw new Error("Application root was not found");
+
+const root = rootElement;
 
 const state: {
   snapshot: AppSnapshot;

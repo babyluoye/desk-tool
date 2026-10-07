@@ -3,11 +3,13 @@ import { appApi } from "./api";
 import type { ApiToken, AppSnapshot, TokenGroup } from "./domain";
 import "./styles.css";
 
-const app = document.querySelector<HTMLDivElement>("#app");
+const appElement = document.querySelector<HTMLDivElement>("#app");
 
-if (!app) {
+if (!appElement) {
   throw new Error("Application root was not found");
 }
+
+const app = appElement;
 
 let refreshSaveTimer: number | undefined;
 
