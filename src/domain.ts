@@ -26,8 +26,6 @@ export interface AppSnapshot {
   tokens: ApiToken[];
   groups: TokenGroup[];
   lastSyncedAt: string | null;
-  refreshIntervalSeconds: number;
-  inactiveOpacityPercent: number;
 }
 
 export interface SyncResult {

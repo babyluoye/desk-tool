@@ -6,19 +6,12 @@ mod storage;
 use chrono::Utc;
 use error::AppError;
 use models::{
-    AppSnapshot, ConnectionConfig, SaveConnectionInput, SyncResult, UpdateInactiveOpacityInput,
-    UpdateRefreshIntervalInput, UpdateTokenGroupInput,
+    AppSnapshot, ConnectionConfig, SaveConnectionInput, SyncResult, UpdateTokenGroupInput,
 };
 use newapi::NewApiClient;
 use std::sync::Arc;
 use storage::{SecureStore, StoredConnection};
-use tauri::{AppHandle, Emitter, Manager, State};
-
-const SNAPSHOT_UPDATED_EVENT: &str = "snapshot-updated";
-const MIN_REFRESH_INTERVAL_SECONDS: u32 = 1;
-const MAX_REFRESH_INTERVAL_SECONDS: u32 = 3600;
-const MIN_INACTIVE_OPACITY_PERCENT: u8 = 20;
-const MAX_INACTIVE_OPACITY_PERCENT: u8 = 100;
+use tauri::{Manager, State};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -32,7 +25,6 @@ fn get_snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, AppError> {
 
 #[tauri::command]
 fn save_connection(
-    app: AppHandle,
     state: State<'_, AppState>,
     input: SaveConnectionInput,
 ) -> Result<AppSnapshot, AppError> {
@@ -62,51 +54,11 @@ fn save_connection(
         ..snapshot
     })?;
     let snapshot = state.store.load_snapshot()?;
-    emit_snapshot(&app, &snapshot);
-    Ok(snapshot)
-}
-
-#[tauri::command]
-fn update_refresh_interval(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: UpdateRefreshIntervalInput,
-) -> Result<AppSnapshot, AppError> {
-    if !(MIN_REFRESH_INTERVAL_SECONDS..=MAX_REFRESH_INTERVAL_SECONDS).contains(&input.seconds) {
-        return Err(AppError::Validation(format!(
-            "刷新间隔必须在 {MIN_REFRESH_INTERVAL_SECONDS} 到 {MAX_REFRESH_INTERVAL_SECONDS} 秒之间。"
-        )));
-    }
-
-    let mut snapshot = state.store.load_snapshot()?;
-    snapshot.refresh_interval_seconds = input.seconds;
-    state.store.save_snapshot(&snapshot)?;
-    emit_snapshot(&app, &snapshot);
-    Ok(snapshot)
-}
-
-#[tauri::command]
-fn update_inactive_opacity(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: UpdateInactiveOpacityInput,
-) -> Result<AppSnapshot, AppError> {
-    if !(MIN_INACTIVE_OPACITY_PERCENT..=MAX_INACTIVE_OPACITY_PERCENT).contains(&input.percent) {
-        return Err(AppError::Validation(format!(
-            "未激活透明度必须在 {MIN_INACTIVE_OPACITY_PERCENT}% 到 {MAX_INACTIVE_OPACITY_PERCENT}% 之间。"
-        )));
-    }
-
-    let mut snapshot = state.store.load_snapshot()?;
-    snapshot.inactive_opacity_percent = input.percent;
-    state.store.save_snapshot(&snapshot)?;
-    emit_snapshot(&app, &snapshot);
     Ok(snapshot)
 }
 
 #[tauri::command]
 async fn sync_from_newapi(
-    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<SyncResult, AppError> {
     let connection = state
@@ -127,13 +79,11 @@ async fn sync_from_newapi(
     snapshot.groups = groups;
     snapshot.last_synced_at = Some(Utc::now().to_rfc3339());
     state.store.save_snapshot(&snapshot)?;
-    emit_snapshot(&app, &snapshot);
     Ok(SyncResult { snapshot, warning: None })
 }
 
 #[tauri::command]
 async fn update_token_group(
-    app: AppHandle,
     state: State<'_, AppState>,
     input: UpdateTokenGroupInput,
 ) -> Result<AppSnapshot, AppError> {
@@ -176,12 +126,7 @@ async fn update_token_group(
         }
     }
     state.store.save_snapshot(&snapshot)?;
-    emit_snapshot(&app, &snapshot);
     Ok(snapshot)
-}
-
-fn emit_snapshot(app: &AppHandle, snapshot: &AppSnapshot) {
-    let _ = app.emit(SNAPSHOT_UPDATED_EVENT, snapshot);
 }
 
 fn validate_base_url(value: &str) -> Result<String, AppError> {
@@ -194,14 +139,16 @@ fn validate_base_url(value: &str) -> Result<String, AppError> {
     Ok(trimmed.to_string())
 }
 
-fn open_floating_window(app: &AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window("floating")
-        .ok_or_else(|| AppError::Storage("悬浮窗未初始化。".to_string()))?;
-    window
-        .show()
-        .and_then(|_| window.set_focus())
-        .map_err(|error| AppError::Storage(format!("悬浮窗打开失败：{error}")))
+fn restore_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.unminimize()
+            .and_then(|_| window.show())
+            .and_then(|_| window.set_focus())
+            .is_err()
+        {
+            eprintln!("Unable to restore the main window.");
+        }
+    }
 }
 
 pub fn run() {
@@ -212,32 +159,49 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state)
         .setup(|app| {
-            let app_handle = app.handle().clone();
+            let icon = app.default_window_icon().cloned().ok_or_else(|| {
+                std::io::Error::other("The application icon is required for the system tray.")
+            })?;
             let menu = tauri::menu::MenuBuilder::new(app)
-                .text("open-floating", "打开悬浮窗")
+                .text("open-main", "打开主窗口")
                 .separator()
                 .text("quit", "退出")
                 .build()?;
-            let tray = tauri::tray::TrayIconBuilder::new()
+            let tray = tauri::tray::TrayIconBuilder::with_id("main-tray")
+                .icon(icon)
+                .tooltip("NewAPI Desk")
                 .menu(&menu)
-                .show_menu_on_left_click(true)
-                .on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "open-floating" => {
-                            let _ = open_floating_window(&app_handle);
-                        }
-                        "quit" => app.exit(0),
-                        _ => {}
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "open-main" => restore_main_window(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if matches!(event, tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    }) {
+                        restore_main_window(tray.app_handle());
                     }
                 });
             tray.build(app)?;
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(event, tauri::WindowEvent::Resized(_))
+                && window.is_minimized().unwrap_or(false)
+                && window.is_visible().unwrap_or(false)
+                && window.hide().is_err()
+            {
+                let _ = window.unminimize();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             save_connection,
-            update_refresh_interval,
-            update_inactive_opacity,
             sync_from_newapi,
             update_token_group
         ])

@@ -3,9 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NewAPI Token Manager</title>
+    <title>NewAPI Desk</title>
   </head>
   <body>
+    <header class="titlebar">
+      <div class="titlebar-drag">
+        <span id="window-title">NewAPI Desk</span>
+      </div>
+      <div class="window-controls">
+        <button id="window-pin" class="window-button" type="button" title="置顶窗口" aria-label="置顶窗口" aria-pressed="false">⌖</button>
+        <button id="window-minimize" class="window-button" type="button" title="最小化到托盘" aria-label="最小化到托盘">−</button>
+        <button id="window-maximize" class="window-button" type="button" title="最大化" aria-label="最大化">□</button>
+        <button id="window-close" class="window-button window-close" type="button" title="关闭应用" aria-label="关闭应用">×</button>
+      </div>
+    </header>
     <div id="app"></div>
     <script type="module" src="/src/entry.ts"></script>
   </body>

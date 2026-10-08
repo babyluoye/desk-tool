@@ -5,10 +5,20 @@ use crate::{
 };
 use reqwest::{Client, RequestBuilder};
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 const TOKEN_PAGE_SIZE: u32 = 100;
+const TOKEN_EDIT_FIELDS: &[&str] = &[
+    "name",
+    "expired_time",
+    "remain_quota",
+    "unlimited_quota",
+    "model_limits_enabled",
+    "model_limits",
+    "allow_ips",
+    "cross_group_retry",
+];
 
 pub struct NewApiClient {
     connection: StoredConnection,
@@ -46,6 +56,21 @@ struct RemoteToken {
     updated_at: Option<i64>,
     #[serde(default)]
     accessed_time: Option<i64>,
+}
+
+// No defaults: omitted fields must not silently become destructive PUT values.
+#[derive(Deserialize, Serialize)]
+struct TokenGroupUpdate {
+    id: u64,
+    name: String,
+    expired_time: i64,
+    remain_quota: i64,
+    unlimited_quota: bool,
+    model_limits_enabled: bool,
+    model_limits: String,
+    allow_ips: Option<String>,
+    group: String,
+    cross_group_retry: bool,
 }
 
 impl NewApiClient {
@@ -110,21 +135,32 @@ impl NewApiClient {
             .token_id
             .parse::<u64>()
             .map_err(|_| AppError::Validation("令牌标识格式无效。".to_string()))?;
-        let group = input.group_id.trim();
-        if group.is_empty() {
+        if token_id == 0 || token_id > i64::MAX as u64 {
+            return Err(AppError::Validation("令牌标识格式无效。".to_string()));
+        }
+        let group = input.group_id.as_str();
+        if group.trim().is_empty() {
             return Err(AppError::Validation("分组不能为空。".to_string()));
         }
 
-        let payload = json!({
-            "id": token_id,
-            "group": group,
-        });
+        // This API is a full edit, not PATCH. Refresh fields immediately before PUT.
+        let detail = self
+            .request(self.http.get(self.url(&format!("/api/token/{token_id}"))))
+            .header(reqwest::header::CACHE_CONTROL, "no-cache")
+            .send()
+            .await
+            .map_err(|_| AppError::NewApi("读取令牌最新配置失败，未提交分组修改。".to_string()))?;
+        let detail: ApiResponse<Value> = parse_response(detail).await?;
+        let detail = detail.data.ok_or_else(|| {
+            AppError::NewApi("服务端未返回令牌详情，未提交分组修改。".to_string())
+        })?;
+        let payload = prepare_group_update(&detail, token_id, group)?;
         let response = self
             .request(self.http.put(self.url("/api/token/")))
             .json(&payload)
             .send()
             .await
-            .map_err(|error| AppError::NewApi(format!("更新令牌分组失败：{error}")))?;
+            .map_err(|_| AppError::NewApi("更新令牌分组请求失败，本地缓存未修改。".to_string()))?;
         let _: ApiResponse<Value> = parse_response(response).await?;
         Ok(())
     }
@@ -167,6 +203,30 @@ async fn parse_response<T: DeserializeOwned>(response: reqwest::Response) -> Res
     Ok(parsed)
 }
 
+fn prepare_group_update(detail: &Value, token_id: u64, group: &str) -> Result<TokenGroupUpdate, AppError> {
+    let fields = detail.as_object().ok_or_else(|| {
+        AppError::NewApi("令牌详情格式无效，未提交分组修改。".to_string())
+    })?;
+    if fields.get("id").and_then(Value::as_u64) != Some(token_id) {
+        return Err(AppError::NewApi("服务端返回的令牌标识不匹配，未提交分组修改。".to_string()));
+    }
+
+    // Whitelist editable fields: never echo keys, ownership or usage counters in a PUT.
+    let mut payload = serde_json::Map::new();
+    payload.insert("id".to_string(), json!(token_id));
+    payload.insert("group".to_string(), json!(group));
+    for &field in TOKEN_EDIT_FIELDS {
+        let value = fields.get(field).ok_or_else(|| {
+            AppError::NewApi(format!("令牌详情缺少 {field}，为避免覆盖原配置，未提交分组修改。"))
+        })?;
+        payload.insert(field.to_string(), value.clone());
+    }
+    // Omit auto_groups: NewAPI preserves them for group=auto; non-auto clears them server-side.
+    serde_json::from_value(Value::Object(payload)).map_err(|_| {
+        AppError::NewApi("令牌编辑字段格式不兼容，为避免覆盖原配置，未提交分组修改。".to_string())
+    })
+}
+
 fn map_token(token: RemoteToken) -> ApiToken {
     let group_name = token.group.filter(|group| !group.trim().is_empty());
     let updated_at = token
@@ -204,4 +264,94 @@ fn mask_token(value: &str) -> String {
 
 fn timestamp_to_rfc3339(value: i64) -> Option<String> {
     chrono::DateTime::from_timestamp(value, 0).map(|time| time.to_rfc3339())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn token_detail(unlimited: bool) -> Value {
+        json!({
+            "id": 42,
+            "name": "Production API",
+            "expired_time": -1,
+            "remain_quota": 1234567,
+            "unlimited_quota": unlimited,
+            "model_limits_enabled": true,
+            "model_limits": "model-a,model-b",
+            "allow_ips": "192.0.2.1\n198.51.100.2",
+            "group": "old-group",
+            "cross_group_retry": true,
+            "auto_groups": ["old-group", "backup-group"],
+            "key": "synthetic-test-key",
+            "user_id": 7,
+            "status": 1,
+            "used_quota": 500,
+            "created_time": 1700000000,
+            "accessed_time": 1700001000
+        })
+    }
+
+    #[test]
+    fn preserves_all_editable_fields_for_limited_and_unlimited_tokens() {
+        for unlimited in [false, true] {
+            let detail = token_detail(unlimited);
+            let update = prepare_group_update(&detail, 42, "new-group").unwrap();
+            let payload = serde_json::to_value(update).unwrap();
+            assert_eq!(payload["id"], detail["id"]);
+            assert_eq!(payload["group"], json!("new-group"));
+            for &field in TOKEN_EDIT_FIELDS {
+                assert_eq!(payload[field], detail[field], "Changed field: {field}");
+            }
+            assert_eq!(payload.as_object().unwrap().len(), TOKEN_EDIT_FIELDS.len() + 2);
+            for field in ["key", "user_id", "status", "used_quota", "created_time", "accessed_time", "auto_groups"] {
+                assert!(payload.get(field).is_none(), "Unexpected field: {field}");
+            }
+        }
+    }
+
+    #[test]
+    fn preserves_empty_zero_and_nullable_values() {
+        let mut detail = token_detail(true);
+        detail["name"] = json!("");
+        detail["remain_quota"] = json!(0);
+        detail["model_limits_enabled"] = json!(false);
+        detail["model_limits"] = json!("");
+        detail["allow_ips"] = Value::Null;
+        detail["cross_group_retry"] = json!(false);
+        let payload = serde_json::to_value(prepare_group_update(&detail, 42, "auto").unwrap()).unwrap();
+        for &field in TOKEN_EDIT_FIELDS {
+            assert_eq!(payload[field], detail[field], "Changed field: {field}");
+        }
+        assert!(payload.get("auto_groups").is_none());
+    }
+
+    #[test]
+    fn refuses_every_missing_editable_field_including_nullable_allow_ips() {
+        for &field in TOKEN_EDIT_FIELDS {
+            let mut detail = token_detail(true);
+            detail.as_object_mut().unwrap().remove(field);
+            assert!(prepare_group_update(&detail, 42, "new-group").is_err(), "Missing: {field}");
+        }
+    }
+
+    #[test]
+    fn refuses_wrong_types_without_substituting_defaults() {
+        for &field in TOKEN_EDIT_FIELDS {
+            let mut detail = token_detail(true);
+            detail[field] = json!([]);
+            assert!(prepare_group_update(&detail, 42, "new-group").is_err(), "Wrong type: {field}");
+        }
+    }
+
+    #[test]
+    fn refuses_missing_mismatched_or_malformed_details() {
+        let detail = token_detail(true);
+        assert!(prepare_group_update(&detail, 43, "new-group").is_err());
+        let mut missing_id = detail;
+        missing_id.as_object_mut().unwrap().remove("id");
+        assert!(prepare_group_update(&missing_id, 42, "new-group").is_err());
+        assert!(prepare_group_update(&Value::Null, 42, "new-group").is_err());
+        assert!(prepare_group_update(&json!([]), 42, "new-group").is_err());
+    }
 }

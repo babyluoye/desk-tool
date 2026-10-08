@@ -16,23 +16,10 @@
         "title": "NewAPI Desk",
         "width": 1180,
         "height": 820,
-        "minWidth": 760,
-        "minHeight": 620,
-        "resizable": true
-      },
-      {
-        "label": "floating",
-        "url": "index.html#floating",
-        "title": "令牌分组",
-        "width": 360,
-        "height": 520,
-        "minWidth": 320,
-        "minHeight": 420,
-        "visible": false,
-        "resizable": false,
-        "alwaysOnTop": true,
-        "decorations": true,
-        "transparent": true
+        "minWidth": 200,
+        "minHeight": 280,
+        "resizable": true,
+        "decorations": false
       }
     ],
     "security": {
