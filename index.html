@@ -7,12 +7,6 @@
   </head>
   <body>
     <div id="app"></div>
-    <script type="module">
-      const entry = window.location.hash === "#floating" ? "/src/floating.ts" : "/src/main.ts";
-      const script = document.createElement("script");
-      script.type = "module";
-      script.src = entry;
-      document.body.appendChild(script);
-    </script>
+    <script type="module" src="/src/entry.ts"></script>
   </body>
 </html>

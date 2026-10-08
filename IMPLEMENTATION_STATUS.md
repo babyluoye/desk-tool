@@ -2,12 +2,12 @@
 
 ## 当前阶段
 
-- 阶段：阶段 10，修复 Rust HTTP 响应类型错误
+- 阶段：阶段 11，修复 Windows 空白窗口和控制台
 - 状态：已完成
 - 开始时间：2025-02-14
 - 完成时间：2025-02-14
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 下一阶段：阶段 11，实际 CI runner 验证
+- 下一阶段：阶段 12，实际 CI runner 验证
 
 ## 已完成阶段
 
@@ -314,6 +314,31 @@
 - `IMPLEMENTATION_STATUS.md`
 
 本地未执行构建或测试；需要重新手动运行 GitHub Actions 验证。
+
+### 阶段 11：修复 Windows 空白窗口和控制台
+
+状态：已完成
+
+问题：
+
+- `index.html` 依赖内联脚本根据 hash 加载入口，生产包 CSP 会阻止内联脚本执行，导致空白窗口。
+- 新增的 `src/entry.ts` 尚未接入 HTML。
+- Windows release 没有声明 GUI subsystem，启动时会额外显示控制台窗口。
+
+修复：
+
+- `index.html` 改为引用外部 `/src/entry.ts` 模块，保持 CSP 不放宽。
+- `src/entry.ts` 根据 `#floating` 动态加载主页面或悬浮窗模块。
+- `src-tauri/src/main.rs` 增加 `windows_subsystem = "windows"`，release 不再显示终端窗口。
+
+本阶段修改文件：
+
+- `index.html`
+- `src/entry.ts`
+- `src-tauri/src/main.rs`
+- `IMPLEMENTATION_STATUS.md`
+
+本地未执行构建或运行验证；需要重新手动运行 GitHub Actions。
 
 ## 待确认事项
 
