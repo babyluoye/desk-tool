@@ -7,7 +7,37 @@
 - 开始时间：2025-02-14
 - 完成时间：2025-02-14
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 下一阶段：阶段 12，实际 CI runner 验证
+- 下一阶段：阶段 13，实际 CI runner 验证
+
+### 阶段 12：修复生产入口资源加载
+
+问题：
+
+- `src/entry.ts` 使用变量动态导入主页面和悬浮窗模块；Vite/Rollup 无法稳定分析这种动态导入并为生产包生成可用的模块映射，Tauri 安装包启动后可能只显示空白页面。
+- Vite 未显式配置相对资源基路径，桌面应用使用本地协议打开构建资源时，根路径资源引用可能无法加载。
+- `SaveConnectionInput.admin_credential_configured` 只由前端传入，但 Rust 业务逻辑不读取，导致构建产生 `dead_code` 警告。
+
+修复：
+
+- 将入口改为基于 hash 的两个字面量动态导入，让 Vite/Rollup 能静态收集 `main` 和 `floating` 两个模块。
+- 为 Vite 配置 `base: "./"`，使生产资源使用相对路径。
+- 移除未使用的 `SaveConnectionInput.admin_credential_configured` 字段，并同步精简前端保存配置调用参数。
+
+本阶段修改文件：
+
+- `src/entry.ts`
+- `vite.config.ts`
+- `src/api.ts`
+- `src/main.ts`
+- `src-tauri/src/models.rs`
+- `IMPLEMENTATION_STATUS.md`
+
+本阶段静态检查：
+
+- 已检查前端入口、Vite 配置、Tauri `frontendDist` 与窗口 URL 的一致性。
+- 已确认保存配置调用与 Rust 输入模型字段一致。
+- `git diff --check` 通过。
+- 未执行构建、测试、开发服务器或运行验证；需要在 Windows CI runner 重新构建并安装后验证窗口内容。
 
 ## 已完成阶段
 

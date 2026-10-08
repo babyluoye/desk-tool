@@ -1,3 +1,5 @@
-const entry = window.location.hash === "#floating" ? "./floating" : "./main";
-
-void import(entry);
+if (window.location.hash === "#floating") {
+  void import("./floating");
+} else {
+  void import("./main");
+}

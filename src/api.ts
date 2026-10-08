@@ -1,17 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  AppSnapshot,
-  ConnectionConfig,
-  SyncResult,
-  UpdateTokenGroupInput,
-} from "./domain";
+import type { AppSnapshot, SyncResult, UpdateTokenGroupInput } from "./domain";
 
 export const appApi = {
   getSnapshot(): Promise<AppSnapshot> {
     return invoke<AppSnapshot>("get_snapshot");
   },
 
-  saveConnection(config: ConnectionConfig & { adminCredential: string }): Promise<AppSnapshot> {
+  saveConnection(config: { baseUrl: string; adminCredential: string }): Promise<AppSnapshot> {
     return invoke<AppSnapshot>("save_connection", { input: config });
   },
 

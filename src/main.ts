@@ -237,7 +237,6 @@ async function saveConnection(event: SubmitEvent): Promise<void> {
     state.snapshot = await appApi.saveConnection({
       baseUrl,
       adminCredential,
-      adminCredentialConfigured: true,
     });
     state.notice = { type: "success", text: "连接配置已保存。" };
   } catch (error) {

@@ -85,7 +85,6 @@ pub struct SyncResult {
 pub struct SaveConnectionInput {
     pub base_url: String,
     pub admin_credential: String,
-    pub admin_credential_configured: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
