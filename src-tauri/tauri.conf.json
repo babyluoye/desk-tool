@@ -20,6 +20,18 @@
         "minHeight": 280,
         "resizable": true,
         "decorations": false
+      },
+      {
+        "label": "capture",
+        "title": "区域截图",
+        "url": "index.html#capture",
+        "width": 1920,
+        "height": 1080,
+        "visible": false,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
       }
     ],
     "security": {

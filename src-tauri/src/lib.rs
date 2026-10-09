@@ -2,6 +2,8 @@ mod error;
 mod models;
 mod newapi;
 mod storage;
+#[cfg(windows)]
+mod screenshot;
 
 use chrono::Utc;
 use error::AppError;
@@ -13,10 +15,58 @@ use newapi::NewApiClient;
 use std::sync::Arc;
 use storage::{SecureStore, StoredConnection};
 use tauri::{Emitter, Manager, State};
+#[cfg(windows)]
+use screenshot::ScreenshotState;
+#[cfg(windows)]
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 #[derive(Clone)]
 pub struct AppState {
     pub store: Arc<SecureStore>,
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn start_screenshot(app: tauri::AppHandle) -> Result<(), AppError> {
+    screenshot::begin_screenshot(&app)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn get_screenshot_image(state: State<'_, ScreenshotState>) -> Result<String, AppError> {
+    screenshot::get_screenshot_image(state)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn screenshot_overlay_ready(app: tauri::AppHandle, state: State<'_, ScreenshotState>) -> Result<(), AppError> {
+    screenshot::screenshot_overlay_ready(&app, &state)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn save_screenshot(
+    app: tauri::AppHandle,
+    state: State<'_, ScreenshotState>,
+    selection: screenshot::ScreenshotSelection,
+) -> Result<bool, AppError> {
+    screenshot::save_screenshot(app, state, selection)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn copy_screenshot(
+    app: tauri::AppHandle,
+    state: State<'_, ScreenshotState>,
+    selection: screenshot::ScreenshotSelection,
+) -> Result<(), AppError> {
+    screenshot::copy_screenshot(app, state, selection)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn cancel_screenshot(app: tauri::AppHandle, state: State<'_, ScreenshotState>) -> Result<(), AppError> {
+    screenshot::cancel_screenshot(app, state)
 }
 
 #[tauri::command]
@@ -173,14 +223,68 @@ fn restore_main_window(app: &tauri::AppHandle) {
     }
 }
 
+#[cfg(windows)]
+macro_rules! app_handlers {
+    () => {
+        tauri::generate_handler![
+            get_snapshot,
+            save_connection,
+            start_screenshot,
+            get_screenshot_image,
+            screenshot_overlay_ready,
+            save_screenshot,
+            copy_screenshot,
+            cancel_screenshot,
+            sync_from_newapi,
+            get_usage_logs,
+            set_close_to_tray,
+            update_token_group
+        ]
+    };
+}
+
+#[cfg(not(windows))]
+macro_rules! app_handlers {
+    () => {
+        tauri::generate_handler![
+            get_snapshot,
+            save_connection,
+            sync_from_newapi,
+            get_usage_logs,
+            set_close_to_tray,
+            update_token_group
+        ]
+    };
+}
+
 pub fn run() {
     let state = AppState {
         store: Arc::new(SecureStore),
     };
 
-    tauri::Builder::default()
-        .manage(state)
+    let builder = tauri::Builder::default().manage(state);
+
+    #[cfg(windows)]
+    let builder = builder
+        .manage(ScreenshotState::new())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        if let Err(error) = screenshot::begin_screenshot(app) {
+                            let _ = app.emit("screenshot-error", error.to_string());
+                        }
+                    }
+                })
+                .build(),
+        );
+
+    builder
         .setup(|app| {
+            #[cfg(windows)]
+            if app.global_shortcut().register("Ctrl+Shift+S").is_err() {
+                let _ = app.emit("screenshot-error", "快捷键 Ctrl+Shift+S 已被占用，可从工具集手动启动截图。");
+            }
             let icon = app.default_window_icon().cloned().ok_or_else(|| {
                 std::io::Error::other("The application icon is required for the system tray.")
             })?;
@@ -217,6 +321,14 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            #[cfg(windows)]
+            if window.label() == "capture" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    screenshot::cancel_screenshot_from_app(&window.app_handle());
+                }
+                return;
+            }
             if window.label() != "main" {
                 return;
             }
@@ -248,14 +360,7 @@ pub fn run() {
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            get_snapshot,
-            save_connection,
-            sync_from_newapi,
-            get_usage_logs,
-            set_close_to_tray,
-            update_token_group
-        ])
+        .invoke_handler(app_handlers!())
         .run(tauri::generate_context!())
         .expect("error while running DeskTool");
 }

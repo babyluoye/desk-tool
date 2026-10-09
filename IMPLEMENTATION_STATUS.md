@@ -2,14 +2,57 @@
 
 ## 当前阶段
 
-- 阶段：阶段 17，GitHub Release 发布与 DeskTool 命名
+- 阶段：阶段 18，Windows 区域截图工具
 - 状态：已完成（静态审阅）
 - 开始时间：本次会话
-- 完成时间：本次会话
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 本阶段目标：GitHub 每次手动构建创建按 UTC 年月日时分命名的 Release，上传独立 EXE/MSI/NSIS；将产品显示名改为 DeskTool。
-- 本阶段范围：GitHub workflow、产品/可执行文件名和阶段记录；Gitea 只同步可执行文件路径，不改发布流程。
-- 下一阶段：手动运行 GitHub 工作流验证 Release、文件名和安装包。
+- 本阶段目标：为工具集增加 Windows 全局快捷键区域截图，可保存 PNG 或复制到剪贴板。
+- 本阶段范围：独立截图覆盖窗口、截图捕获/保存/剪贴板 command、工具集入口、全局快捷键与文档记录；不修改 NewAPI 业务。
+- 下一阶段：静态审阅截图交互与 Windows 专用边界；按约束不构建、不测试、不运行。
+
+### 阶段 18：Windows 区域截图工具
+
+状态：已完成（静态审阅）
+
+已完成行为：
+
+- 应用默认打开“工具集”，区域截图作为独立 Windows 工具呈现；NewAPI 管理保留为辅助页面。
+- Ctrl+Shift+S 全局快捷键和工具集按钮均可尝试启动区域截图；快捷键因其它应用占用时不阻断应用启动。
+- 启动时截取主显示器并显示透明度遮罩覆盖层，支持鼠标拖选、区域预览、Esc/取消、保存 PNG 和复制至系统剪贴板。
+- 保存时提供系统文件对话框；截图图片只在 Rust 进程内存中暂存，完成/取消后清除，不落盘、不记录日志。
+- 截图窗口仅在 Windows 创建 command/state/依赖；非 Windows 工具集显示不可用提示。
+
+本阶段修改文件：
+
+- `AGENTS.md`
+- `IMPLEMENTATION_STATUS.md`
+- `src-tauri/Cargo.toml`
+- `src-tauri/capabilities/default.json`
+- `src-tauri/src/error.rs`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/screenshot.rs`（新增）
+- `src-tauri/tauri.conf.json`
+- `src/api.ts`
+- `src/capture.css`（新增）
+- `src/capture.ts`（新增）
+- `src/entry.ts`
+- `src/main.ts`
+- `src/styles.css`
+
+静态审阅结果：
+
+- 对照 screenshots 0.8、image 0.24 和 arboard API 的图像类型/像素缓冲格式；确认使用 primary display 元数据定位截图窗口，并根据实际捕获图像与覆盖层 CSS 视口比例换算裁剪像素。
+- 检查快捷键插件按键注册、Windows 条件依赖/command handler、截图窗口 label/hash 路由、Tauri invoke 参数 camelCase、工具集事件和截图完成清理路径。
+- 检查截图输入有限值、正宽高、视口边界和裁剪图像边界；截图图像不写入普通配置、NewAPI 状态、日志或磁盘（用户保存操作除外）。
+- `git diff --check` 通过。
+- 未执行构建、打包、测试、开发服务器或运行验证（遵循项目约束）。
+
+未决事项与限制：
+
+- 第一版仅截取 Windows 主显示器，多显示器逐屏选择尚未支持；需 Windows 实机验证不同 DPI 缩放/显示器坐标下覆盖层覆盖与选区映射。
+- `Ctrl+Shift+S` 若与其它应用快捷键冲突，会无法注册；应用仍可通过工具集按钮截图。
+- 保存对话框、剪贴板和 WebView 覆盖窗口焦点行为需要 Windows 实机验证。
+- 未执行构建、测试或运行验证。
 
 ### 阶段 17：GitHub Release 发布与 DeskTool 命名
 

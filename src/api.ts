@@ -25,4 +25,8 @@ export const appApi = {
   setCloseToTray(closeToTray: boolean): Promise<AppSnapshot> {
     return invoke<AppSnapshot>("set_close_to_tray", { closeToTray });
   },
+
+  startScreenshot(): Promise<void> {
+    return invoke<void>("start_screenshot");
+  },
 };

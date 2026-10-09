@@ -4,6 +4,7 @@ import { appApi } from "./api";
 import type { ApiToken, AppSnapshot, TokenGroup, UsageLog } from "./domain";
 import "./styles.css";
 
+const supportsRegionScreenshot = navigator.userAgent.includes("Windows");
 const appElement = document.querySelector<HTMLDivElement>("#app");
 
 if (!appElement) {
@@ -19,7 +20,7 @@ const state: {
   notice: { type: "success" | "error" | "info"; text: string } | null;
   loading: boolean;
   showSettings: boolean;
-  page: "home" | "logs" | "settings";
+  page: "home" | "logs" | "settings" | "tools";
   usageLogs: UsageLog[];
   usageTotal: number;
   usagePage: number;
@@ -30,7 +31,7 @@ const state: {
   notice: null,
   loading: false,
   showSettings: false,
-  page: "home",
+  page: "tools",
   usageLogs: [],
   usageTotal: 0,
   usagePage: 1,
@@ -103,7 +104,7 @@ function render(): void {
           <span class="brand-mark">D</span>
           <span>
             <strong>DeskTool</strong>
-            <small>令牌分组管理</small>
+            <small>桌面工具集</small>
           </span>
         </div>
         <div class="topbar-actions">
@@ -113,6 +114,7 @@ function render(): void {
               <button data-page="home" type="button">令牌管理</button>
               <button data-page="logs" type="button">使用日志</button>
               <button data-page="settings" type="button">设置</button>
+              <button data-page="tools" type="button">工具集</button>
             </div>
           </details>
           <span class="sync-label"><span class="status-dot ${connection ? "online" : "offline"}"></span>${connection ? "已配置" : "未配置"}</span>
@@ -120,7 +122,16 @@ function render(): void {
       </header>
 
       <main class="content">
-        ${state.page === "home" ? `
+        ${state.page === "tools" ? `
+          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button></div></section>
+          <section class="intro"><div><p class="eyebrow">DeskTool 工具集</p><h1>工具集</h1><p class="intro-copy">快捷启动常用桌面工具。</p></div></section>
+          ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
+          <section class="panel tools-panel">
+            <div class="panel-heading"><div><p class="section-kicker">屏幕工具</p><h2>区域截图</h2></div><kbd>${supportsRegionScreenshot ? "Ctrl + Shift + S" : "Windows 专属"}</kbd></div>
+            <p class="intro-copy">${supportsRegionScreenshot ? "在主显示器上框选区域，可保存为 PNG 图片或直接复制到剪贴板。" : "区域截图目前仅支持 Windows。"}</p>
+            <button class="primary-button" id="start-screenshot" type="button" ${supportsRegionScreenshot ? "" : "disabled"}>开始区域截图</button>
+          </section>
+        ` : state.page === "home" ? `
         <section class="compact-toolbar" aria-label="紧凑模式操作">
           <label for="compact-token">API 令牌</label>
           <select id="compact-token" ${state.loading ? "disabled" : ""}>
@@ -130,6 +141,7 @@ function render(): void {
           <div class="compact-actions">
             <button class="secondary-button" data-page="logs" type="button">日志</button>
             <button class="secondary-button" data-page="settings" type="button">设置</button>
+            <button class="secondary-button" data-page="tools" type="button">工具</button>
             <button class="secondary-button" id="compact-sync" type="button" ${state.loading ? "disabled" : ""}>${state.loading ? "处理中..." : "同步"}</button>
             <button class="secondary-button" id="toggle-settings" type="button" aria-expanded="${state.showSettings}">${state.showSettings ? "收起配置" : "连接配置"}</button>
           </div>
@@ -254,6 +266,10 @@ function bindEvents(): void {
         state.page = "settings";
         state.notice = null;
         render();
+      } else if (page === "tools") {
+        state.page = "tools";
+        state.notice = null;
+        render();
       } else if (page === "home") {
         state.page = "home";
         state.notice = null;
@@ -262,6 +278,9 @@ function bindEvents(): void {
     });
   });
   document.querySelector<HTMLButtonElement>("#refresh-logs")?.addEventListener("click", () => void openUsageLogs(state.usagePage));
+  document.querySelector<HTMLButtonElement>("#start-screenshot")?.addEventListener("click", () => {
+    void appApi.startScreenshot().catch((error) => setNotice("error", getErrorMessage(error, "启动区域截图失败。")));
+  });
   document.querySelector<HTMLButtonElement>("#logs-prev")?.addEventListener("click", () => void openUsageLogs(state.usagePage - 1));
   document.querySelector<HTMLButtonElement>("#logs-next")?.addEventListener("click", () => void openUsageLogs(state.usagePage + 1));
   document.querySelectorAll<HTMLInputElement>('input[name="close-behavior"]').forEach((input) => {
@@ -408,6 +427,9 @@ async function init(): Promise<void> {
   void listen<string>("navigate", (event) => {
     if (event.payload === "logs") void openUsageLogs(1);
   }).catch(() => setNotice("error", "系统托盘导航初始化失败。"));
+  void listen<string>("screenshot-error", (event) => {
+    setNotice("error", event.payload || "区域截图启动失败。");
+  }).catch(() => setNotice("error", "截图快捷键监听初始化失败。"));
   try {
     state.snapshot = await appApi.getSnapshot();
   } catch (error) {

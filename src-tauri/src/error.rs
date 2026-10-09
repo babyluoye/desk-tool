@@ -11,6 +11,8 @@ pub enum AppError {
     NewApi(String),
     #[error("{0}")]
     NotConfigured(String),
+    #[error("{0}")]
+    Screenshot(String),
 }
 
 impl Serialize for AppError {

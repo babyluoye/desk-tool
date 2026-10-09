@@ -108,6 +108,9 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
 .log-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; color: #8693a6; font-size: 11px; }
 .log-pagination > div { display: flex; gap: 8px; }
 .settings-panel { max-width: 620px; padding: 20px; }
+.tools-panel { max-width: 620px; padding: 20px; }
+.tools-panel .intro-copy { margin: 16px 0; }
+.tools-panel kbd { padding: 6px 8px; border: 1px solid #dfe6ef; border-radius: 5px; color: #536980; background: #f5f8fc; font: 11px ui-monospace, monospace; white-space: nowrap; }
 .settings-panel h2 { margin-bottom: 16px; }
 .setting-option { display: flex; align-items: flex-start; gap: 10px; padding: 14px 10px; border-top: 1px solid #edf1f6; cursor: pointer; }
 .setting-option input { flex: 0 0 16px; width: 16px; height: 16px; margin: 2px 0 0; accent-color: #246ac4; }
@@ -154,7 +157,9 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
   .logs-panel { min-width: 0; }
   .log-table th, .log-table td { padding: 8px; }
   .log-pagination { align-items: flex-start; flex-direction: column; padding: 10px; }
-  .settings-panel { padding: 12px; }
+  .settings-panel, .tools-panel { padding: 12px; }
+  .tools-panel .panel-heading { flex-wrap: wrap; }
+  .tools-panel kbd { font-size: 9px; }
   .setting-option { padding: 10px 4px; }
   .setting-option > span { min-width: 0; }
   .setting-option small { font-size: 10px; }
