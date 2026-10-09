@@ -1,0 +1,13 @@
+* { box-sizing: border-box; }
+html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+html, body { background: #18202b; font-family: "Segoe UI", sans-serif; user-select: none; }
+[hidden], .titlebar { display: none !important; }
+.pinned-image { position: fixed; inset: 0; cursor: move; }
+.pinned-image img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.pinned-controls { position: absolute; top: 6px; right: 6px; display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid #ffffff55; border-radius: 6px; background: #152238e8; color: #fff; opacity: 0; transition: opacity .12s; font-size: 12px; }
+.pinned-image:hover .pinned-controls, .pinned-image:focus-within .pinned-controls { opacity: 1; }
+.pinned-controls button { padding: 4px 8px; border: 0; border-radius: 4px; color: #fff; background: #ad3333; cursor: pointer; font: inherit; }
+.pinned-controls button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+#resize-pinned { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; padding: 0; border: 0; background: linear-gradient(135deg, transparent 50%, #2684ff 50%, #2684ff 60%, transparent 60%, transparent 70%, #2684ff 70%); cursor: nwse-resize; opacity: 0; }
+.pinned-image:hover #resize-pinned, .pinned-image:focus-within #resize-pinned { opacity: 1; }
+#pinned-error { position: absolute; inset: auto 8px 8px; padding: 8px; border-radius: 4px; color: #fff; background: #9c3333; font-size: 12px; pointer-events: none; }

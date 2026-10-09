@@ -179,6 +179,25 @@ pub fn copy_screenshot_impl(
     finish_screenshot(&app, &state)
 }
 
+pub fn pin_screenshot_impl(
+    app: AppHandle,
+    state: State<'_, ScreenshotState>,
+    selection: ScreenshotSelection,
+) -> Result<(), AppError> {
+    let (x, y, viewport_width, viewport_height) =
+        (selection.x, selection.y, selection.viewport_width, selection.viewport_height);
+    let image = crop_selection(&state, selection)?;
+    let label = crate::pinned_screenshot::create_pinned_screenshot(
+        &app, image, x, y, viewport_width, viewport_height,
+    )?;
+    if let Err(error) = finish_screenshot(&app, &state) {
+        if let Some(window) = app.get_webview_window(&label) { let _ = window.destroy(); }
+        crate::pinned_screenshot::remove_pinned_screenshot(&app, &label);
+        return Err(error);
+    }
+    Ok(())
+}
+
 pub fn cancel_screenshot_impl(
     app: AppHandle,
     state: State<'_, ScreenshotState>,

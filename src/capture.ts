@@ -27,6 +27,7 @@ root.innerHTML = `
       <button id="clear-annotations" type="button" title="清除全部标注">清除</button>
       <button id="save-selection" type="button">保存图片</button>
       <button id="copy-selection" type="button">复制</button>
+      <button id="pin-selection" type="button" title="将含标注的截图作为置顶窗口显示">贴图</button>
     </div>
     <div class="capture-error" role="alert" hidden></div>
   </main>`;
@@ -413,6 +414,9 @@ async function init(): Promise<void> {
   });
   requiredElement<HTMLButtonElement>("#copy-selection").addEventListener("click", () => {
     void withSelection((area) => invoke<void>("copy_screenshot", { selection: area }));
+  });
+  requiredElement<HTMLButtonElement>("#pin-selection").addEventListener("click", () => {
+    void withSelection((area) => invoke<void>("pin_screenshot", { selection: area }));
   });
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") { event.preventDefault(); void cancel(); }

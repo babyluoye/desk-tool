@@ -3,6 +3,8 @@ mod models;
 mod newapi;
 mod storage;
 #[cfg(windows)]
+mod pinned_screenshot;
+#[cfg(windows)]
 mod screenshot;
 #[cfg(windows)]
 mod screenshot_annotation;
@@ -70,6 +72,30 @@ async fn copy_screenshot(
         let state = app.state::<ScreenshotState>();
         screenshot::copy_screenshot_impl(app.clone(), state, selection)
     }).await.map_err(|_| AppError::Screenshot("复制截图任务失败，请重试。".to_string()))?
+}
+
+#[cfg(windows)]
+#[tauri::command]
+async fn pin_screenshot(
+    app: tauri::AppHandle,
+    selection: screenshot::ScreenshotSelection,
+) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<ScreenshotState>();
+        screenshot::pin_screenshot_impl(app.clone(), state, selection)
+    }).await.map_err(|_| AppError::Screenshot("贴图任务失败，请重试。".to_string()))?
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn get_pinned_screenshot(window: tauri::WebviewWindow) -> Result<Option<String>, AppError> {
+    pinned_screenshot::get_pinned_screenshot(&window)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn show_pinned_screenshot(window: tauri::WebviewWindow) -> Result<(), AppError> {
+    pinned_screenshot::show_pinned_screenshot(&window)
 }
 
 #[cfg(windows)]
@@ -276,6 +302,9 @@ macro_rules! app_handlers {
             screenshot_overlay_ready,
             save_screenshot,
             copy_screenshot,
+            pin_screenshot,
+            get_pinned_screenshot,
+            show_pinned_screenshot,
             cancel_screenshot,
             set_screenshot_shortcut,
             get_screenshot_shortcut_warning,
@@ -311,6 +340,7 @@ pub fn run() {
 
     #[cfg(windows)]
     let builder = builder
+        .manage(pinned_screenshot::PinnedScreenshotState::new())
         .manage(ScreenshotState::new())
         .manage(ScreenshotShortcutState::new())
         .plugin(
@@ -374,6 +404,13 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            #[cfg(windows)]
+            if window.label().starts_with("pinned-") {
+                if matches!(event, tauri::WindowEvent::Destroyed) {
+                    pinned_screenshot::remove_pinned_screenshot(window.app_handle(), window.label());
+                }
+                return;
+            }
             #[cfg(windows)]
             if window.label() == "capture" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
