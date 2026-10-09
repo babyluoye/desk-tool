@@ -50,7 +50,7 @@ fn save_screenshot(
     state: State<'_, ScreenshotState>,
     selection: screenshot::ScreenshotSelection,
 ) -> Result<bool, AppError> {
-    screenshot::save_screenshot(app, state, selection)
+    screenshot::save_screenshot_impl(app, state, selection)
 }
 
 #[cfg(windows)]
@@ -60,13 +60,13 @@ fn copy_screenshot(
     state: State<'_, ScreenshotState>,
     selection: screenshot::ScreenshotSelection,
 ) -> Result<(), AppError> {
-    screenshot::copy_screenshot(app, state, selection)
+    screenshot::copy_screenshot_impl(app, state, selection)
 }
 
 #[cfg(windows)]
 #[tauri::command]
 fn cancel_screenshot(app: tauri::AppHandle, state: State<'_, ScreenshotState>) -> Result<(), AppError> {
-    screenshot::cancel_screenshot(app, state)
+    screenshot::cancel_screenshot_impl(app, state)
 }
 
 #[tauri::command]

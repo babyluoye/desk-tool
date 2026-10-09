@@ -2,13 +2,42 @@
 
 ## 当前阶段
 
-- 阶段：阶段 18，Windows 区域截图工具
+- 阶段：阶段 19，修复截图构建错误
 - 状态：已完成（静态审阅）
 - 开始时间：本次会话
+- 完成时间：本次会话
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 本阶段目标：为工具集增加 Windows 全局快捷键区域截图，可保存 PNG 或复制到剪贴板。
-- 本阶段范围：独立截图覆盖窗口、截图捕获/保存/剪贴板 command、工具集入口、全局快捷键与文档记录；不修改 NewAPI 业务。
-- 下一阶段：静态审阅截图交互与 Windows 专用边界；按约束不构建、不测试、不运行。
+- 本阶段目标：修复截图功能 Tauri command 宏重名及缺少 Emitter trait 的编译错误。
+- 本阶段范围：将截图命令业务逻辑改为非 command 实现函数，保留 lib.rs 唯一 command wrapper；更新阶段记录。
+- 下一阶段：在允许构建验证的 Windows 环境运行构建，确认本次编译错误已消失。
+
+### 阶段 19：修复截图构建错误
+
+状态：已完成（静态审阅）
+
+问题：
+
+- `lib.rs` 的 Tauri command wrapper 与 `screenshot.rs` 中同名 command 宏生成相同的宏命名空间标识，导致 `__cmd__save_screenshot`、`__cmd__copy_screenshot`、`__cmd__cancel_screenshot` 重定义及 handler 歧义。
+- `screenshot.rs` 调用 `AppHandle::emit`，但未导入 `tauri::Emitter` trait。
+
+修复计划：
+
+- 将截图模块里的保存、复制、取消逻辑改为非 command 的 `*_impl` 函数，保留 `lib.rs` command 作为唯一 Tauri 边界。
+- 将截图模块三个重复的 Tauri command 实现改名为 `save_screenshot_impl`、`copy_screenshot_impl`、`cancel_screenshot_impl`，移除其 `#[tauri::command]` 属性；`lib.rs` 保留同名唯一 command wrapper 并转调实现函数。
+- 导入 `tauri::Emitter`，使截图 ready/finished 事件调用可解析。
+
+本阶段修改文件：
+
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/screenshot.rs`
+- `IMPLEMENTATION_STATUS.md`
+
+静态审阅结果：
+
+- 检查 `screenshot.rs` 的保存/复制/取消实现不再声明 `#[tauri::command]`，避免命令宏生成名冲突；command wrapper 和 invoke 注册名称保持不变，前端调用协议未变。
+- 确认 `tauri::Emitter` 已导入，覆盖 `emit` 两处调用。
+- `git diff --check` 通过。
+- 未执行构建、测试或运行验证（遵循项目约束）。
 
 ### 阶段 18：Windows 区域截图工具
 

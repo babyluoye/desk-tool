@@ -4,7 +4,7 @@ use image::{imageops, DynamicImage, ImageFormat, RgbaImage};
 use screenshots::Screen;
 use serde::Deserialize;
 use std::{borrow::Cow, io::Cursor, sync::{atomic::{AtomicBool, Ordering}, Mutex}};
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State};
 
 pub struct ScreenshotState(Mutex<Option<CapturedScreen>>, AtomicBool);
 
@@ -121,8 +121,7 @@ pub fn get_screenshot_image(state: State<'_, ScreenshotState>) -> Result<String,
     Ok(format!("data:image/png;base64,{}", STANDARD.encode(png.into_inner())))
 }
 
-#[tauri::command]
-pub fn save_screenshot(
+pub fn save_screenshot_impl(
     app: AppHandle,
     state: State<'_, ScreenshotState>,
     selection: ScreenshotSelection,
@@ -157,8 +156,7 @@ pub fn save_screenshot(
     Ok(true)
 }
 
-#[tauri::command]
-pub fn copy_screenshot(
+pub fn copy_screenshot_impl(
     app: AppHandle,
     state: State<'_, ScreenshotState>,
     selection: ScreenshotSelection,
@@ -177,8 +175,7 @@ pub fn copy_screenshot(
     finish_screenshot(&app, &state)
 }
 
-#[tauri::command]
-pub fn cancel_screenshot(
+pub fn cancel_screenshot_impl(
     app: AppHandle,
     state: State<'_, ScreenshotState>,
 ) -> Result<(), AppError> {
