@@ -183,12 +183,22 @@ pub fn pin_screenshot_impl(
     app: AppHandle,
     state: State<'_, ScreenshotState>,
     selection: ScreenshotSelection,
+    translate: bool,
 ) -> Result<(), AppError> {
+    if translate {
+        let config = app.state::<crate::AppState>().store.load_translation()?;
+        if !config.settings.consent {
+            return Err(AppError::Validation("请先在设置中同意将识别文字发送到翻译服务。".into()));
+        }
+        if config.settings.provider == crate::translation::TranslationProvider::Openai && config.api_key.is_empty() {
+            return Err(AppError::Validation("请先配置独立的 OpenAI API Key。".into()));
+        }
+    }
     let (x, y, viewport_width, viewport_height) =
         (selection.x, selection.y, selection.viewport_width, selection.viewport_height);
     let image = crop_selection(&state, selection)?;
     let label = crate::pinned_screenshot::create_pinned_screenshot(
-        &app, image, x, y, viewport_width, viewport_height,
+        &app, image, x, y, viewport_width, viewport_height, translate,
     )?;
     if let Err(error) = finish_screenshot(&app, &state) {
         if let Some(window) = app.get_webview_window(&label) { let _ = window.destroy(); }

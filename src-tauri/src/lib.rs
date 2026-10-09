@@ -2,6 +2,9 @@ mod error;
 mod models;
 mod newapi;
 mod storage;
+mod translation;
+#[cfg(windows)]
+mod translation_jobs;
 #[cfg(windows)]
 mod pinned_screenshot;
 #[cfg(windows)]
@@ -18,6 +21,7 @@ use models::{
     UpdateTokenGroupInput, UsageLogPage,
 };
 use newapi::NewApiClient;
+use translation::{public_settings, SaveTranslationInput, TranslationSettings};
 use std::sync::Arc;
 use storage::{SecureStore, StoredConnection};
 use tauri::{Emitter, Manager, State};
@@ -31,31 +35,75 @@ pub struct AppState {
     pub store: Arc<SecureStore>,
 }
 
+#[tauri::command]
+fn get_translation_settings(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<TranslationSettings, AppError> {
+    if window.label() != "main" && !window.label().starts_with("pinned-") {
+        return Err(AppError::Validation("翻译配置来源无效。".into()));
+    }
+    let config = state.store.load_translation()?;
+    Ok(public_settings(&config))
+}
+
+#[tauri::command]
+fn save_translation_settings(
+    window: tauri::WebviewWindow, state: State<'_, AppState>, input: SaveTranslationInput,
+) -> Result<TranslationSettings, AppError> {
+    if window.label() != "main" { return Err(AppError::Validation("翻译配置只能在主窗口修改。".into())); }
+    let mut settings = input.settings;
+    translation::validate_settings(&mut settings)?;
+    let mut config = state.store.load_translation()?;
+    if !input.clear_api_key && input.api_key.trim().is_empty() && !config.api_key.is_empty() {
+        let before = translation::completion_url(&config.settings.base_url)?;
+        let after = translation::completion_url(&settings.base_url)?;
+        if before.origin() != after.origin() {
+            return Err(AppError::Validation("服务域名已变更，请重新输入 API Key，或先清除原 Key。".into()));
+        }
+    }
+    if input.clear_api_key { config.api_key.clear(); }
+    if !input.clear_api_key && !input.api_key.trim().is_empty() {
+        let key = input.api_key.trim();
+        if key.len() > 4096 || key.chars().any(char::is_control) {
+            return Err(AppError::Validation("API Key 格式无效。".into()));
+        }
+        config.api_key = key.to_string();
+    }
+    config.settings = settings;
+    state.store.save_translation(&config)?;
+    #[cfg(windows)]
+    if !config.settings.consent { translation_jobs::cancel_pending(window.app_handle()); }
+    Ok(public_settings(&config))
+}
+
 #[cfg(windows)]
 #[tauri::command]
-async fn start_screenshot(app: tauri::AppHandle) -> Result<(), AppError> {
+async fn start_screenshot(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), AppError> {
+    require_window(&window, "main")?;
     tauri::async_runtime::spawn_blocking(move || screenshot::begin_screenshot(&app))
         .await.map_err(|_| AppError::Screenshot("启动截图任务失败，请重试。".to_string()))?
 }
 
 #[cfg(windows)]
 #[tauri::command]
-fn get_screenshot_image(state: State<'_, ScreenshotState>) -> Result<String, AppError> {
+fn get_screenshot_image(window: tauri::WebviewWindow, state: State<'_, ScreenshotState>) -> Result<String, AppError> {
+    require_window(&window, "capture")?;
     screenshot::get_screenshot_image(state)
 }
 
 #[cfg(windows)]
 #[tauri::command]
-fn screenshot_overlay_ready(app: tauri::AppHandle, state: State<'_, ScreenshotState>) -> Result<(), AppError> {
+fn screenshot_overlay_ready(window: tauri::WebviewWindow, app: tauri::AppHandle, state: State<'_, ScreenshotState>) -> Result<(), AppError> {
+    require_window(&window, "capture")?;
     screenshot::screenshot_overlay_ready(&app, &state)
 }
 
 #[cfg(windows)]
 #[tauri::command]
 async fn save_screenshot(
+    window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     selection: screenshot::ScreenshotSelection,
 ) -> Result<bool, AppError> {
+    require_window(&window, "capture")?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<ScreenshotState>();
         screenshot::save_screenshot_impl(app.clone(), state, selection)
@@ -65,9 +113,11 @@ async fn save_screenshot(
 #[cfg(windows)]
 #[tauri::command]
 async fn copy_screenshot(
+    window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     selection: screenshot::ScreenshotSelection,
 ) -> Result<(), AppError> {
+    require_window(&window, "capture")?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<ScreenshotState>();
         screenshot::copy_screenshot_impl(app.clone(), state, selection)
@@ -77,12 +127,15 @@ async fn copy_screenshot(
 #[cfg(windows)]
 #[tauri::command]
 async fn pin_screenshot(
+    window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     selection: screenshot::ScreenshotSelection,
+    translate: Option<bool>,
 ) -> Result<(), AppError> {
+    require_window(&window, "capture")?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<ScreenshotState>();
-        screenshot::pin_screenshot_impl(app.clone(), state, selection)
+        screenshot::pin_screenshot_impl(app.clone(), state, selection, translate.unwrap_or(false))
     }).await.map_err(|_| AppError::Screenshot("贴图任务失败，请重试。".to_string()))?
 }
 
@@ -100,17 +153,70 @@ fn show_pinned_screenshot(window: tauri::WebviewWindow) -> Result<(), AppError> 
 
 #[cfg(windows)]
 #[tauri::command]
-fn cancel_screenshot(app: tauri::AppHandle, state: State<'_, ScreenshotState>) -> Result<(), AppError> {
+fn take_pinned_auto_translate(window: tauri::WebviewWindow) -> bool {
+    pinned_screenshot::take_auto_translate(&window)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn start_image_translation(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<translation_jobs::JobSnapshot, AppError> {
+    let mut config = state.store.load_translation()?;
+    translation::validate_settings(&mut config.settings)?;
+    translation_jobs::start(&window, config)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn get_image_translation(window: tauri::WebviewWindow) -> Result<Option<translation_jobs::JobSnapshot>, AppError> {
+    translation_jobs::snapshot(&window)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn cancel_image_translation(window: tauri::WebviewWindow) {
+    translation_jobs::cancel_for_label(window.app_handle(), window.label(), false);
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn next_ocr_task(window: tauri::WebviewWindow) -> Result<Option<translation_jobs::OcrTask>, AppError> {
+    translation_jobs::take_next(&window)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+async fn complete_ocr_task(window: tauri::WebviewWindow, id: String, document: Option<translation::OcrDocument>) -> Result<(), AppError> {
+    translation_jobs::complete_ocr(window, id, document).await
+}
+
+#[cfg(windows)]
+#[tauri::command]
+async fn copy_translation_text(window: tauri::WebviewWindow, text: String) -> Result<(), AppError> {
+    if !window.label().starts_with("pinned-") || text.len() > 256000 {
+        return Err(AppError::Validation("复制文字来源或大小无效。".into()));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut clipboard = arboard::Clipboard::new().map_err(|_| AppError::Translation("无法访问系统剪贴板。".into()))?;
+        clipboard.set_text(text).map_err(|_| AppError::Translation("复制文字失败。".into()))
+    }).await.map_err(|_| AppError::Translation("复制任务失败。".into()))?
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn cancel_screenshot(window: tauri::WebviewWindow, app: tauri::AppHandle, state: State<'_, ScreenshotState>) -> Result<(), AppError> {
+    require_window(&window, "capture")?;
     screenshot::cancel_screenshot_impl(app, state)
 }
 
 #[cfg(windows)]
 #[tauri::command]
 async fn set_screenshot_shortcut(
+    window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     shortcut: String,
 ) -> Result<AppSnapshot, AppError> {
+    require_window(&window, "main")?;
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
         screenshot_shortcut::update_shortcut(&app, &store, &shortcut)
@@ -137,16 +243,24 @@ async fn set_screenshot_shortcut_recording(
         .await.map_err(|_| AppError::Screenshot("快捷键录入状态更新失败。".to_string()))?
 }
 
+fn require_window(window: &tauri::WebviewWindow, label: &str) -> Result<(), AppError> {
+    if window.label() != label { return Err(AppError::Validation("该操作不允许从当前窗口调用。".into())); }
+    Ok(())
+}
+
 #[tauri::command]
-fn get_snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, AppError> {
+fn get_snapshot(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<AppSnapshot, AppError> {
+    require_window(&window, "main")?;
     state.store.load_snapshot()
 }
 
 #[tauri::command]
 fn save_connection(
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
     input: SaveConnectionInput,
 ) -> Result<AppSnapshot, AppError> {
+    require_window(&window, "main")?;
     let base_url = validate_base_url(&input.base_url)?;
     let admin_credential = input.admin_credential.trim();
     let existing = state.store.load_connection()?;
@@ -177,7 +291,8 @@ fn save_connection(
 }
 
 #[tauri::command]
-fn set_close_to_tray(state: State<'_, AppState>, close_to_tray: bool) -> Result<AppSnapshot, AppError> {
+fn set_close_to_tray(window: tauri::WebviewWindow, state: State<'_, AppState>, close_to_tray: bool) -> Result<AppSnapshot, AppError> {
+    require_window(&window, "main")?;
     let mut snapshot = state.store.load_snapshot()?;
     snapshot.close_to_tray = close_to_tray;
     state.store.save_snapshot(&snapshot)?;
@@ -186,9 +301,11 @@ fn set_close_to_tray(state: State<'_, AppState>, close_to_tray: bool) -> Result<
 
 #[tauri::command]
 async fn get_usage_logs(
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
     input: GetUsageLogsInput,
 ) -> Result<UsageLogPage, AppError> {
+    require_window(&window, "main")?;
     let connection = state
         .store
         .load_connection()?
@@ -199,8 +316,10 @@ async fn get_usage_logs(
 
 #[tauri::command]
 async fn sync_from_newapi(
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<SyncResult, AppError> {
+    require_window(&window, "main")?;
     let connection = state
         .store
         .load_connection()?
@@ -224,9 +343,11 @@ async fn sync_from_newapi(
 
 #[tauri::command]
 async fn update_token_group(
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
     input: UpdateTokenGroupInput,
 ) -> Result<AppSnapshot, AppError> {
+    require_window(&window, "main")?;
     if input.token_id.trim().is_empty() || input.group_id.trim().is_empty() {
         return Err(AppError::Validation("令牌和分组不能为空。".to_string()));
     }
@@ -297,6 +418,8 @@ macro_rules! app_handlers {
         tauri::generate_handler![
             get_snapshot,
             save_connection,
+            get_translation_settings,
+            save_translation_settings,
             start_screenshot,
             get_screenshot_image,
             screenshot_overlay_ready,
@@ -305,6 +428,13 @@ macro_rules! app_handlers {
             pin_screenshot,
             get_pinned_screenshot,
             show_pinned_screenshot,
+            take_pinned_auto_translate,
+            start_image_translation,
+            get_image_translation,
+            cancel_image_translation,
+            next_ocr_task,
+            complete_ocr_task,
+            copy_translation_text,
             cancel_screenshot,
             set_screenshot_shortcut,
             get_screenshot_shortcut_warning,
@@ -323,6 +453,8 @@ macro_rules! app_handlers {
         tauri::generate_handler![
             get_snapshot,
             save_connection,
+            get_translation_settings,
+            save_translation_settings,
             sync_from_newapi,
             get_usage_logs,
             set_close_to_tray,
@@ -342,6 +474,7 @@ pub fn run() {
     let builder = builder
         .manage(pinned_screenshot::PinnedScreenshotState::new())
         .manage(ScreenshotState::new())
+        .manage(translation_jobs::TranslationJobs::default())
         .manage(ScreenshotShortcutState::new())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()

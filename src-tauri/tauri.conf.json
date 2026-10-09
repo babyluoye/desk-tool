@@ -34,10 +34,21 @@
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true
+      },
+      {
+        "label": "ocr-worker",
+        "title": "OCR Worker",
+        "url": "index.html#ocr",
+        "visible": false,
+        "width": 1,
+        "height": 1,
+        "resizable": false,
+        "decorations": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost https:; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' data: ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
     }
   },
   "bundle": {

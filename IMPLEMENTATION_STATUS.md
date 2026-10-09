@@ -2,14 +2,61 @@
 
 ## 当前阶段
 
-- 阶段：阶段 24，贴图滚轮缩放与焦点边框
-- 状态：已完成（静态审阅）
+- 阶段：阶段 25，本地 OCR 图片翻译
+- 状态：已完成（静态审阅，待 Windows 实机验收）
 - 开始时间：本次会话
 - 完成时间：本次会话
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 本阶段目标：激活贴图后滚轮等比缩放，使用蓝/灰边缘区分焦点；仅探索 OCR，不接入识别。
-- 本阶段范围：贴图前端、窗口尺寸/位置权限、窗口阴影、OCR 方案记录。
-- 下一阶段：Windows 实机验证滚轮、焦点颜色、阴影和多显示器 DPI；OCR 作为独立后续决策。
+- 本阶段目标：截图选区与现有贴图支持本地英文/简中 OCR、原位置译文覆盖及原文译文复制。
+- 本阶段范围：独立安全配置、OpenAI/Google Free 渠道、OCR 内嵌资源、任务取消、贴图文字交互。
+- 下一阶段：静态审阅完成后，在 Windows 验证 OCR、DPI、网络渠道与单文件 EXE 资源。
+
+### 阶段 25：本地 OCR 图片翻译
+
+状态：已完成（静态审阅，待 Windows 实机验收）
+
+已完成行为：
+
+- 设置页增加独立翻译渠道、识别/目标语言、OpenAI 地址/模型/Key、HTTP 代理、默认字号和文字上传授权。默认 Google Free，默认不授权上传；Key 不返回前端，配置安全保存在独立 `translation-config` 密钥环条目。
+- OpenAI 使用非流式 Chat Completions，保留兼容网关路径前缀、严格校验响应文字 ID；修改服务 origin 必须重新提供 Key 或清除旧 Key。Google 使用免 Key gtx 客户端接口，按短段串行请求；错误只返回脱敏说明，不回显底层网络错误或第三方响应。
+- 翻译默认直连，可配置不含认证信息的 HTTP 代理，不影响 NewAPI。限制连接/单次/整次超时、响应和总译文大小，禁止重定向和自动切换渠道。
+- 单个隐藏 `ocr-worker` 窗口串行运行 Tesseract.js，只识别最终含红框/马赛克的 PNG；英文源语言加载 eng，自动/简中加载 eng+chi_sim。显式读取 blocks 中的文字行和归一化坐标。
+- Worker、四种含内嵌 WASM 的核心、两个语言模型和许可证随前端资源内嵌；不运行时访问 CDN。13 个资源合计 22649520 字节（21.60 MiB），固定版本/URL/SHA-256/大小记录在清单。
+- 截图选区工具栏增加翻译按钮，生成选区位置的置顶翻译贴图；已有贴图在当前窗口翻译，不创建重复窗口。工具集新增图片翻译入口和配置按钮。
+- 贴图提供翻译/取消、原图切换、文字选择、原文译文文本视图、复制和字号滑块；长译文限制在自身 OCR 框内，完整文本可从文本视图复制。移动模式继续拖动及滚轮缩放，文字选择/文本视图避免误触。
+- 每张贴图按窗口 label 管理任务；OCR 串行、网络最多并发 2；排队/识别/翻译/成功/失败/取消状态通过定向事件更新，任务 ID 丢弃过期结果。失败/重试保留旧译文，网络失败后仍可复制本次 OCR 原文。
+- 取消、超时、关闭和撤销上传授权清理任务或停止后续处理；任务结束/失败清除任务配置中的 Key，OCR 终止原生 Worker 并释放图像。关闭贴图删除图片、原文和译文；不保存历史或内容日志。
+- 主窗口、截图窗口、OCR 窗口与贴图的 command 校验调用来源；OCR capability 仅允许事件监听/清理。CSP 仅放行本地脚本、Worker、WASM、data 图像/数据和 IPC，禁止前端远程请求。
+
+本阶段修改文件：
+
+- `src-tauri/src/translation.rs`、`src-tauri/src/translation_jobs.rs`（新增）。
+- `src-tauri/src/lib.rs`、`storage.rs`、`error.rs`、`screenshot.rs`、`pinned_screenshot.rs`。
+- `src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`src-tauri/capabilities/pinned.json`、`src-tauri/capabilities/ocr.json`（新增）。
+- `src/ocr.ts`、`src/translation.ts`、`src/icons.ts`、`src/vendor/tesseract.js`、`src/vendor/tesseract.d.ts`（新增）。
+- `src/main.ts`、`src/api.ts`、`src/domain.ts`、`src/entry.ts`、`src/capture.ts`、`src/pinned.ts`、`src/pinned.css`、`src/styles.css`。
+- `public/ocr/worker.min.js`、`public/ocr/core/*.wasm.js`、`public/ocr/lang/*.traineddata.gz`、`public/ocr/LICENSE-*.txt`、`public/icons/lucide.js`（新增）。
+- `scripts/prepare-ocr-assets.mjs`、`scripts/ocr-assets.json`（新增），`AGENTS.md`、`OCR_FEASIBILITY.md`、`IMPLEMENTATION_STATUS.md`。
+- 未增加 npm 依赖或修改 package.json/package-lock.json；仅增加 Tokio 直接依赖（sync/time/macros）。仓库没有 Cargo.lock，未生成锁文件；现有 Vite public 复制路径和两套发布流程保持不变。
+
+静态审阅结果：
+
+- 人工审阅跨端 camelCase 字段、任务 ID、窗口来源校验、隐私边界、取消/重试/关闭竞态、失败保留数据、归一化坐标和 contain 留白、默认授权关闭。
+- 核对 Tesseract.js 6.0.1 官方 loadImage、dump、resolvePaths 实现，确认本地路径、显式 blocks 输出和文字行结构；检查核心没有 eval/new Function，Lucide 使用的图标存在。
+- `node scripts/prepare-ocr-assets.mjs --verify` 离线 SHA-256 和大小检查通过，13 个资源完整；`node --check` 资源准备脚本、Tesseract ESM 与 Worker 语法检查通过。
+- Tauri 配置、capability 和资源清单 JSON 可解析；`git diff --check` 通过。
+- 新增 Rust 回归用例覆盖地址规范化、无效代理/语言/字号、OCR 坐标/ID/字符数、Unicode 分段、公开设置不泄露 Key、旧配置默认值和渠道响应映射；只审阅，未运行。
+- 遵守约束：未安装或配置环境、未启动服务、未执行 Rust/前端/Tauri 构建、测试、自动类型检查、OCR、翻译网络请求或界面运行验证。
+
+未决事项与限制：
+
+- Windows 实机验收仍待完成：单文件 EXE 离线资源加载、WebView2 CSP/Worker/WASM、DPI 与坐标、小字/中文混排、最小窗口、选择复制、多贴图排队及取消资源释放；具体清单在 OCR_FEASIBILITY.md。
+- Google Free 接口非官方有 SLA 免费 API，可能限流、变更或网络不可达；OpenAI 兼容服务需支持要求的 JSON 文本输出，失败不自动切换渠道。
+- 覆盖不是背景修复；复杂底图、旋转、多栏或低清文字不能保证准确，极小区域需通过文本视图读取。英/简中之外的源语种未内置。
+- 只有图片保留在本地，OCR 文字会发送所选第三方；撤销授权或取消无法撤回已发送文字，第三方留存不受应用控制。马赛克不保证完全不可识别。
+- 不包含文件/剪贴板图片导入、翻译历史或译文图片导出；原截图导出流程保持不变，翻译结果仅为贴图覆盖和文字复制。
+
+下一步：按 Windows 验收清单核验运行行为，并根据实际 OCR 准确率、资源耗时和服务兼容性决定后续优化。
 
 ### 阶段 24：贴图滚轮缩放与焦点边框
 

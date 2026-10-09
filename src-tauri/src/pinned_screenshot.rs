@@ -8,12 +8,13 @@ const MAX_PINNED_IMAGES: usize = 16;
 
 pub struct PinnedScreenshotState {
     images: Mutex<HashMap<String, Option<String>>>,
+    auto_translate: Mutex<HashMap<String, bool>>,
     next_id: AtomicU64,
 }
 
 impl PinnedScreenshotState {
     pub fn new() -> Self {
-        Self { images: Mutex::new(HashMap::new()), next_id: AtomicU64::new(1) }
+        Self { images: Mutex::new(HashMap::new()), auto_translate: Mutex::new(HashMap::new()), next_id: AtomicU64::new(1) }
     }
 }
 
@@ -24,6 +25,7 @@ pub fn create_pinned_screenshot(
     y: f64,
     viewport_width: f64,
     viewport_height: f64,
+    translate: bool,
 ) -> Result<String, AppError> {
     let capture = app.get_webview_window("capture")
         .ok_or_else(|| AppError::Screenshot("截图窗口不可用。".to_string()))?;
@@ -62,6 +64,7 @@ pub fn create_pinned_screenshot(
         }
         images.insert(label.clone(), None);
     }
+    if let Ok(mut flags) = state.auto_translate.lock() { flags.insert(label.clone(), translate); }
     // This runs on a blocking worker: creating a WebView on the Windows main thread can deadlock.
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html#pinned".into()))
         .title("贴图 · DeskTool")
@@ -125,9 +128,23 @@ pub fn show_pinned_screenshot(window: &WebviewWindow) -> Result<(), AppError> {
         .map_err(|_| AppError::Screenshot("无法显示置顶贴图。".to_string()))
 }
 
+pub fn image_for_label(app: &AppHandle, label: &str) -> Result<String, AppError> {
+    let state = app.state::<PinnedScreenshotState>();
+    let images = state.images.lock().map_err(|_| AppError::Screenshot("贴图状态不可用。".into()))?;
+    images.get(label).and_then(|image| image.clone())
+        .ok_or_else(|| AppError::Screenshot("贴图图片尚未准备好或已关闭。".into()))
+}
+
+pub fn take_auto_translate(window: &WebviewWindow) -> bool {
+    let state = window.app_handle().state::<PinnedScreenshotState>();
+    let translate = state.auto_translate.lock().ok()
+        .and_then(|mut flags| flags.remove(window.label())).unwrap_or(false);
+    translate
+}
+
 pub fn remove_pinned_screenshot(app: &AppHandle, label: &str) {
     let state = app.state::<PinnedScreenshotState>();
-    if let Ok(mut images) = state.images.lock() {
-        images.remove(label);
-    };
+    if let Ok(mut images) = state.images.lock() { images.remove(label); }
+    if let Ok(mut flags) = state.auto_translate.lock() { flags.remove(label); }
+    crate::translation_jobs::cancel_for_label(app, label, true);
 }

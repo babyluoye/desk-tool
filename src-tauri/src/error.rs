@@ -13,6 +13,8 @@ pub enum AppError {
     NotConfigured(String),
     #[error("{0}")]
     Screenshot(String),
+    #[error("{0}")]
+    Translation(String),
 }
 
 impl Serialize for AppError {

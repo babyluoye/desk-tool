@@ -51,6 +51,22 @@ impl SecureStore {
             .map_err(|error| AppError::Storage(format!("连接配置安全保存失败：{error}")))
     }
 
+    pub fn load_translation(&self) -> Result<crate::translation::StoredTranslationConfig, AppError> {
+        match self.entry("translation-config")?.get_password() {
+            Ok(value) => serde_json::from_str(&value)
+                .map_err(|_| AppError::Storage("翻译配置格式无效。".into())),
+            Err(keyring::Error::NoEntry) => Ok(Default::default()),
+            Err(_) => Err(AppError::Storage("翻译安全配置读取失败。".into())),
+        }
+    }
+
+    pub fn save_translation(&self, config: &crate::translation::StoredTranslationConfig) -> Result<(), AppError> {
+        let value = serde_json::to_string(config)
+            .map_err(|_| AppError::Storage("翻译配置序列化失败。".into()))?;
+        self.entry("translation-config")?.set_password(&value)
+            .map_err(|_| AppError::Storage("翻译配置安全保存失败。".into()))
+    }
+
     fn entry(&self, account: &str) -> Result<Entry, AppError> {
         Entry::new(SERVICE_NAME, account)
             .map_err(|error| AppError::Storage(format!("系统安全存储不可用：{error}")))

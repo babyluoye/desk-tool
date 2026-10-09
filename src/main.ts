@@ -1,7 +1,9 @@
 import { configureCloseBehavior, initWindowControls, updateWindowTitle } from "./window-controls";
 import { listen } from "@tauri-apps/api/event";
 import { appApi } from "./api";
-import type { ApiToken, AppSnapshot, TokenGroup, UsageLog } from "./domain";
+import type { ApiToken, AppSnapshot, TokenGroup, TranslationSettings, UsageLog } from "./domain";
+import { languageOptions } from "./translation";
+import { icon, renderIcons } from "./icons";
 import "./styles.css";
 
 const supportsRegionScreenshot = navigator.userAgent.includes("Windows");
@@ -26,6 +28,7 @@ const state: {
   usagePage: number;
   shortcutDraft: string | null;
   shortcutWarning: string | null;
+  translationSettings: TranslationSettings;
 } = {
   snapshot: { connection: null, tokens: [], groups: [], lastSyncedAt: null, closeToTray: false, screenshotShortcut: "Ctrl+Shift+S" },
   selectedTokenId: null,
@@ -39,6 +42,10 @@ const state: {
   usagePage: 1,
   shortcutDraft: null,
   shortcutWarning: null,
+  translationSettings: {
+    provider: "google_free", sourceLanguage: "auto", targetLanguage: "zh-CN", baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini", apiKeyConfigured: false, customProxy: "", fontScale: 1, consent: false,
+  },
 };
 
 let shortcutRecordingRequested = false;
@@ -73,6 +80,11 @@ function renderUsageLog(log: UsageLog): string {
   const date = log.createdAt > 0 ? new Date(log.createdAt * 1000).toLocaleString() : "—";
   const tokenCount = log.promptTokens + log.completionTokens;
   return `<tr><td>${escapeHtml(date)}</td><td><strong>${escapeHtml(log.username || "—")}</strong><small>${escapeHtml(log.tokenName || "—")}</small></td><td>${escapeHtml(log.modelName || "—")}</td><td>${escapeHtml(log.channelName || "—")}</td><td>${escapeHtml(log.group || "—")}</td><td>${log.quota.toLocaleString()}</td><td>${tokenCount.toLocaleString()}<small>输入 ${log.promptTokens.toLocaleString()} · 输出 ${log.completionTokens.toLocaleString()}</small></td><td>${log.useTime.toLocaleString()} 秒${log.isStream ? " · 流式" : ""}</td></tr>`;
+}
+
+function renderLanguageOptions(selected: string, includeAuto = false): string {
+  const options = includeAuto ? [["auto", "自动检测"], ["en", "英语"], ["zh-CN", "简体中文"]] : languageOptions;
+  return options.map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
 }
 
 function renderGroup(group: TokenGroup): string {
@@ -141,6 +153,11 @@ function render(): void {
             <p class="intro-copy">${supportsRegionScreenshot ? "在主显示器上框选区域，可保存为 PNG 图片或直接复制到剪贴板。" : "区域截图目前仅支持 Windows。"}</p>
             ${state.shortcutWarning ? `<p class="shortcut-warning">${escapeHtml(state.shortcutWarning)}</p>` : ""}
             <button class="primary-button" id="start-screenshot" type="button" ${supportsRegionScreenshot ? "" : "disabled"}>开始区域截图</button>
+          </section>
+          <section class="translation-tool">
+            <div class="panel-heading"><h2>图片翻译</h2><span class="translation-channel">${state.translationSettings.provider === "openai" ? "OpenAI" : "Google Translate（Free）"}</span></div>
+            <div class="translation-tool-status"><span>${languageOptions.find(([value]) => value === state.translationSettings.targetLanguage)?.[1] ?? "简体中文"}</span><span>${state.translationSettings.consent ? "已授权文字上传" : "待确认文字上传"}</span></div>
+            <div class="shortcut-setting-actions"><button id="translation-screenshot" class="primary-button icon-command" type="button" ${supportsRegionScreenshot && !state.loading ? "" : "disabled"}>${icon("scan-text")}截图</button><button class="secondary-button icon-command" data-page="settings" type="button">${icon("settings-2")}配置</button></div>
           </section>
         ` : state.page === "home" ? `
         <section class="compact-toolbar" aria-label="紧凑模式操作">
@@ -256,6 +273,29 @@ function render(): void {
               </div>
             </form>
           </section>
+          <section class="translation-settings-panel">
+            <p class="section-kicker">图片翻译</p><h2>翻译渠道</h2>
+            <form id="translation-form" class="translation-form">
+              <label><span>渠道</span><select name="provider" ${state.loading ? "disabled" : ""}>
+                <option value="google_free" ${state.translationSettings.provider === "google_free" ? "selected" : ""}>Google Translate（Free）</option>
+                <option value="openai" ${state.translationSettings.provider === "openai" ? "selected" : ""}>OpenAI 协议</option>
+              </select></label>
+              <div class="translation-fields">
+                <label><span>识别语言</span><select name="sourceLanguage" ${state.loading ? "disabled" : ""}>${renderLanguageOptions(state.translationSettings.sourceLanguage, true)}</select></label>
+                <label><span>目标语言</span><select name="targetLanguage" ${state.loading ? "disabled" : ""}>${renderLanguageOptions(state.translationSettings.targetLanguage)}</select></label>
+              </div>
+              <div id="openai-fields" class="translation-form" ${state.translationSettings.provider === "openai" ? "" : "hidden"}>
+                <label><span>OpenAI Base URL</span><input name="baseUrl" type="url" value="${escapeHtml(state.translationSettings.baseUrl)}" placeholder="https://api.openai.com/v1" ${state.loading || state.translationSettings.provider !== "openai" ? "disabled" : ""}/></label>
+                <label><span>模型名称</span><input name="model" value="${escapeHtml(state.translationSettings.model)}" placeholder="gpt-4o-mini" ${state.loading || state.translationSettings.provider !== "openai" ? "disabled" : ""}/></label>
+                <label><span>OpenAI API Key</span><input name="apiKey" type="password" placeholder="${state.translationSettings.apiKeyConfigured ? "已配置，输入新 Key 可替换" : "输入独立 API Key"}" autocomplete="off" ${state.loading || state.translationSettings.provider !== "openai" ? "disabled" : ""}/></label>
+              </div>
+              <label><span>HTTP 代理（可选）</span><input name="customProxy" value="${escapeHtml(state.translationSettings.customProxy)}" placeholder="http://127.0.0.1:7890" ${state.loading ? "disabled" : ""}/></label>
+              <label><span>默认译文字号</span><input name="fontScale" type="range" min="0.6" max="2" step="0.1" value="${state.translationSettings.fontScale}" aria-label="默认译文字号" ${state.loading ? "disabled" : ""}/></label>
+              <label class="setting-option translation-consent"><input name="consent" type="checkbox" ${state.translationSettings.consent ? "checked" : ""} ${state.loading ? "disabled" : ""}/><span><strong>允许发送识别文字</strong><small>图片只在本地 OCR；译文渠道会收到 OCR 原文，不会收到图片。</small></span></label>
+              <p class="translation-security-note">Key 使用系统安全存储，不会显示完整内容。Google Free 接口可能限流或变化。</p>
+              <div class="shortcut-setting-actions"><button class="primary-button" type="submit" ${state.loading ? "disabled" : ""}>保存翻译配置</button><button class="secondary-button" id="clear-translation-key" type="button" ${state.loading || !state.translationSettings.apiKeyConfigured ? "disabled" : ""}>清除 OpenAI Key</button></div>
+            </form>
+          </section>
         `}
       </main>
       ${state.page === "home" ? '<footer class="footer">令牌分组更新将先写入 NewAPI，成功后才更新本地缓存。</footer>' : ""}
@@ -263,6 +303,7 @@ function render(): void {
   `;
 
   bindEvents();
+  renderIcons();
   updateWindowTitle(selectedToken?.name ?? null);
 }
 
@@ -350,6 +391,21 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("#reset-screenshot-shortcut")?.addEventListener("click", () => {
     void saveScreenshotShortcut("Ctrl+Shift+S");
   });
+  document.querySelector<HTMLSelectElement>('#translation-form select[name="provider"]')?.addEventListener("change", (event) => {
+    const fields = document.querySelector<HTMLElement>("#openai-fields");
+    if (fields) {
+      fields.hidden = (event.currentTarget as HTMLSelectElement).value !== "openai";
+      fields.querySelectorAll<HTMLInputElement>("input").forEach((input) => { input.disabled = fields.hidden || state.loading; });
+    }
+  });
+  document.querySelector<HTMLFormElement>("#translation-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveTranslationSettings(event.currentTarget as HTMLFormElement, false);
+  });
+  document.querySelector<HTMLButtonElement>("#clear-translation-key")?.addEventListener("click", () => {
+    const form = document.querySelector<HTMLFormElement>("#translation-form");
+    if (form) void saveTranslationSettings(form, true);
+  });
   document.querySelectorAll<HTMLButtonElement>("[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
       const menu = button.closest(".window-menu") as HTMLDetailsElement | null;
@@ -372,6 +428,15 @@ function bindEvents(): void {
     });
   });
   document.querySelector<HTMLButtonElement>("#refresh-logs")?.addEventListener("click", () => void openUsageLogs(state.usagePage));
+  document.querySelector<HTMLButtonElement>("#translation-screenshot")?.addEventListener("click", () => {
+    if (!state.translationSettings.consent || state.translationSettings.provider === "openai" && !state.translationSettings.apiKeyConfigured) {
+      state.page = "settings";
+      setNotice("info", "请先保存翻译渠道并确认文字上传授权。");
+      document.querySelector("#translation-form")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    void appApi.startScreenshot().catch((error) => setNotice("error", getErrorMessage(error, "启动区域截图失败。")));
+  });
   document.querySelector<HTMLButtonElement>("#start-screenshot")?.addEventListener("click", () => {
     void appApi.startScreenshot().catch((error) => setNotice("error", getErrorMessage(error, "启动区域截图失败。")));
   });
@@ -425,6 +490,31 @@ async function openUsageLogs(page: number): Promise<void> {
     state.loading = false;
     render();
   }
+}
+
+async function saveTranslationSettings(form: HTMLFormElement, clearApiKey: boolean): Promise<void> {
+  if (state.loading) return;
+  const data = new FormData(form);
+  const settings: TranslationSettings = {
+    ...state.translationSettings,
+    provider: String(data.get("provider")) as TranslationSettings["provider"],
+    sourceLanguage: String(data.get("sourceLanguage")),
+    targetLanguage: String(data.get("targetLanguage")),
+    baseUrl: String(data.get("baseUrl") ?? state.translationSettings.baseUrl).trim(),
+    model: String(data.get("model") ?? state.translationSettings.model).trim(),
+    customProxy: String(data.get("customProxy")).trim(),
+    consent: data.get("consent") === "on",
+    fontScale: Number(data.get("fontScale")),
+  };
+  state.loading = true;
+  state.notice = null;
+  render();
+  try {
+    state.translationSettings = await appApi.saveTranslationSettings(settings, clearApiKey ? "" : String(data.get("apiKey") ?? ""), clearApiKey);
+    state.notice = { type: "success", text: "图片翻译配置已保存。" };
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "保存图片翻译配置失败，原设置未改变。") };
+  } finally { state.loading = false; render(); }
 }
 
 async function saveCloseBehavior(closeToTray: boolean): Promise<void> {
@@ -551,6 +641,7 @@ async function init(): Promise<void> {
   }).catch(() => setNotice("error", "截图快捷键监听初始化失败。"));
   try {
     state.snapshot = await appApi.getSnapshot();
+    state.translationSettings = await appApi.getTranslationSettings();
     if (supportsRegionScreenshot) state.shortcutWarning = await appApi.getScreenshotShortcutWarning();
   } catch (error) {
     state.notice = { type: "error", text: getErrorMessage(error, "读取本地数据失败。") };

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSnapshot, SyncResult, UpdateTokenGroupInput, UsageLogPage } from "./domain";
+import type { AppSnapshot, SyncResult, TranslationSettings, UpdateTokenGroupInput, UsageLogPage } from "./domain";
 
 export const appApi = {
   getSnapshot(): Promise<AppSnapshot> {
@@ -36,6 +36,14 @@ export const appApi = {
 
   setScreenshotShortcutRecording(recording: boolean): Promise<void> {
     return invoke<void>("set_screenshot_shortcut_recording", { recording });
+  },
+
+  getTranslationSettings(): Promise<TranslationSettings> {
+    return invoke<TranslationSettings>("get_translation_settings");
+  },
+
+  saveTranslationSettings(settings: TranslationSettings, apiKey: string, clearApiKey: boolean): Promise<TranslationSettings> {
+    return invoke<TranslationSettings>("save_translation_settings", { input: { settings, apiKey, clearApiKey } });
   },
 
   startScreenshot(): Promise<void> {
