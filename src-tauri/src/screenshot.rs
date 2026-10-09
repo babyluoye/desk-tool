@@ -3,15 +3,17 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use image::{imageops, DynamicImage, ImageFormat, RgbaImage};
 use screenshots::Screen;
 use serde::Deserialize;
-use std::{borrow::Cow, io::Cursor, sync::{atomic::{AtomicBool, Ordering}, Mutex}};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State};
+use std::{
+    borrow::Cow,
+    io::Cursor,
+    sync::{atomic::{AtomicBool, Ordering}, Mutex},
+};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct ScreenshotState(Mutex<Option<CapturedScreen>>, AtomicBool);
 
 struct CapturedScreen {
     image: RgbaImage,
-    x: i32,
-    y: i32,
 }
 
 #[derive(Deserialize)]
@@ -49,42 +51,39 @@ pub fn begin_screenshot(app: &AppHandle) -> Result<(), AppError> {
         let image = screen
             .capture()
             .map_err(|error| AppError::Screenshot(format!("屏幕捕获失败：{error}")))?;
-        *session = Some(CapturedScreen {
-            image,
-            x: screen.display_info.x,
-            y: screen.display_info.y,
-        });
+        *session = Some(CapturedScreen { image });
     }
     drop(session);
 
     let window = app
         .get_webview_window("capture")
         .ok_or_else(|| AppError::Screenshot("截图窗口不可用。".to_string()))?;
-    let session = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Screenshot("截图状态不可用。".to_string()))?;
-    let screen = &session
-        .as_ref()
-        .ok_or_else(|| AppError::Screenshot("未找到屏幕截图。".to_string()))?
-        .image;
-    let position = {
-        let captured = session.as_ref().expect("session checked above");
-        PhysicalPosition::new(captured.x, captured.y)
+    let open_window = || -> Result<(), AppError> {
+        if is_new_capture {
+            // Tauri monitor coordinates are physical; screenshots/display-info can report scaled coordinates.
+            let monitor = window.primary_monitor()
+                .map_err(|_| AppError::Screenshot("无法读取主显示器范围。".to_string()))?
+                .ok_or_else(|| AppError::Screenshot("未检测到主显示器。".to_string()))?;
+            window.set_fullscreen(false)
+                .and_then(|_| window.set_position(*monitor.position()))
+                .and_then(|_| window.set_size(*monitor.size()))
+                .and_then(|_| window.set_fullscreen(true))
+                .map_err(|_| AppError::Screenshot("无法设置截图全屏覆盖。".to_string()))?;
+        }
+        window.set_always_on_top(true)
+            .and_then(|_| window.show())
+            .and_then(|_| window.set_focus())
+            .map_err(|_| AppError::Screenshot("无法打开截图窗口。".to_string()))?;
+        if is_new_capture && state.1.load(Ordering::Acquire) {
+            emit_screenshot_image(app)?;
+        }
+        Ok(())
     };
-    let size = PhysicalSize::new(screen.width(), screen.height());
-    drop(session);
-    window
-        .set_always_on_top(true)
-        .and_then(|_| window.set_position(position))
-        .and_then(|_| window.set_size(size))
-        .and_then(|_| window.show())
-        .and_then(|_| window.set_focus())
-        .map_err(|_| AppError::Screenshot("无法打开截图窗口。".to_string()))?;
-    if is_new_capture && state.1.load(Ordering::Acquire) {
-        emit_screenshot_image(app)?;
+    let result = open_window();
+    if result.is_err() && is_new_capture {
+        let _ = finish_screenshot(app, &state);
     }
-    Ok(())
+    result
 }
 
 pub fn screenshot_overlay_ready(app: &AppHandle, state: &ScreenshotState) -> Result<(), AppError> {
@@ -102,7 +101,7 @@ pub fn screenshot_overlay_ready(app: &AppHandle, state: &ScreenshotState) -> Res
 
 fn emit_screenshot_image(app: &AppHandle) -> Result<(), AppError> {
     let image = get_screenshot_image(app.state::<ScreenshotState>())?;
-    app.emit("screenshot-ready", image)
+    app.emit_to("capture", "screenshot-ready", image)
         .map_err(|_| AppError::Screenshot("无法显示屏幕图像。".to_string()))
 }
 
@@ -254,6 +253,6 @@ fn finish_screenshot(app: &AppHandle, state: &ScreenshotState) -> Result<(), App
             .set_always_on_top(true)
             .map_err(|_| AppError::Screenshot("无法重置截图窗口。".to_string()))?;
     }
-    let _ = app.emit("screenshot-finished", ());
+    let _ = app.emit_to("capture", "screenshot-finished", ());
     Ok(())
 }

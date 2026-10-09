@@ -27,7 +27,13 @@ pub struct TokenGroup {
     pub token_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub const DEFAULT_SCREENSHOT_SHORTCUT: &str = "Ctrl+Shift+S";
+
+fn default_screenshot_shortcut() -> String {
+    DEFAULT_SCREENSHOT_SHORTCUT.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSnapshot {
     pub connection: Option<ConnectionConfig>,
@@ -36,6 +42,21 @@ pub struct AppSnapshot {
     pub last_synced_at: Option<String>,
     #[serde(default)]
     pub close_to_tray: bool,
+    #[serde(default = "default_screenshot_shortcut")]
+    pub screenshot_shortcut: String,
+}
+
+impl Default for AppSnapshot {
+    fn default() -> Self {
+        Self {
+            connection: None,
+            tokens: Vec::new(),
+            groups: Vec::new(),
+            last_synced_at: None,
+            close_to_tray: false,
+            screenshot_shortcut: default_screenshot_shortcut(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

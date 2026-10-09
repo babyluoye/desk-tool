@@ -112,6 +112,11 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
 .tools-panel .intro-copy { margin: 16px 0; }
 .tools-panel kbd { padding: 6px 8px; border: 1px solid #dfe6ef; border-radius: 5px; color: #536980; background: #f5f8fc; font: 11px ui-monospace, monospace; white-space: nowrap; }
 .settings-panel h2 { margin-bottom: 16px; }
+.shortcut-panel { margin-top: 20px; }
+.shortcut-panel .intro-copy { margin: 10px 0 14px; }
+.shortcut-setting-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.shortcut-warning { margin: 10px 0; color: #9c3333; font-size: 12px; line-height: 1.6; }
+#screenshot-shortcut { cursor: pointer; }
 .setting-option { display: flex; align-items: flex-start; gap: 10px; padding: 14px 10px; border-top: 1px solid #edf1f6; cursor: pointer; }
 .setting-option input { flex: 0 0 16px; width: 16px; height: 16px; margin: 2px 0 0; accent-color: #246ac4; }
 .setting-option strong, .setting-option small { display: block; }

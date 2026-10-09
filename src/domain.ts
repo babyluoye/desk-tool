@@ -27,6 +27,7 @@ export interface AppSnapshot {
   groups: TokenGroup[];
   lastSyncedAt: string | null;
   closeToTray: boolean;
+  screenshotShortcut: string;
 }
 
 export interface SyncResult {

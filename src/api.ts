@@ -26,6 +26,18 @@ export const appApi = {
     return invoke<AppSnapshot>("set_close_to_tray", { closeToTray });
   },
 
+  setScreenshotShortcut(shortcut: string): Promise<AppSnapshot> {
+    return invoke<AppSnapshot>("set_screenshot_shortcut", { shortcut });
+  },
+
+  getScreenshotShortcutWarning(): Promise<string | null> {
+    return invoke<string | null>("get_screenshot_shortcut_warning");
+  },
+
+  setScreenshotShortcutRecording(recording: boolean): Promise<void> {
+    return invoke<void>("set_screenshot_shortcut_recording", { recording });
+  },
+
   startScreenshot(): Promise<void> {
     return invoke<void>("start_screenshot");
   },

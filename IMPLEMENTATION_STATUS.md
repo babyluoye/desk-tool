@@ -2,14 +2,58 @@
 
 ## 当前阶段
 
-- 阶段：阶段 19，修复截图构建错误
+- 阶段：阶段 20，截图交互与快捷键设置
 - 状态：已完成（静态审阅）
 - 开始时间：本次会话
 - 完成时间：本次会话
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 本阶段目标：修复截图功能 Tauri command 宏重名及缺少 Emitter trait 的编译错误。
-- 本阶段范围：将截图命令业务逻辑改为非 command 实现函数，保留 lib.rs 唯一 command wrapper；更新阶段记录。
-- 下一阶段：在允许构建验证的 Windows 环境运行构建，确认本次编译错误已消失。
+- 本阶段目标：修正截图覆盖和选区交互，增加可配置的全局截图快捷键。
+- 本阶段范围：截图窗口、选区交互、快捷键设置与安全快照兼容；不改 NewAPI 业务。
+- 下一阶段：在 Windows 实机验证全屏边缘、DPI、选区操作和快捷键冲突/更换。
+
+### 阶段 20：截图交互与快捷键设置
+
+状态：已完成（静态审阅）
+
+已完成行为：
+
+- 截图网页清除 HTML 默认 margin/padding，关闭原生窗口阴影；捕获窗口按 Tauri 主显示器位置/尺寸进入原生全屏，减少边缘留白和左侧白条。
+- 选区创建/拖动期间不显示操作按钮；鼠标松开后才确认选区，并在选区右边缘对齐的下方显示保存/复制操作，屏幕底边空间不足时翻到选区上方。
+- 选区支持内部拖动整体移动，以及四条边、四角手柄拖拽缩放；选区坐标限制在视口内，右键/Esc 可取消。
+- 设置页可录入 Ctrl/Alt + 字母/数字/F1–F12 组合键，默认 Ctrl+Shift+S，可恢复默认。录入期间临时注销系统快捷键以便 WebView 收到按键，失焦后恢复。
+- 快捷键设置保存到既有系统密钥环安全快照；旧快照通过 Serde 默认值兼容。后端校验快捷键格式；先注册新快捷键再保存，冲突/存储失败保留旧设置。启动注册失败时仍可从工具集手动截图并显示提示。
+- 截图捕获、文件对话框和快捷键插件的阻塞操作移到 blocking worker，避免阻塞 WebView/Tauri 主线程。
+
+本阶段修改文件：
+
+- `AGENTS.md`
+- `IMPLEMENTATION_STATUS.md`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/models.rs`
+- `src-tauri/src/screenshot.rs`
+- `src-tauri/src/screenshot_shortcut.rs`（新增）
+- `src-tauri/tauri.conf.json`
+- `src/api.ts`
+- `src/capture.css`
+- `src/capture.ts`
+- `src/domain.ts`
+- `src/main.ts`
+- `src/styles.css`
+
+静态审阅结果：
+
+- 检查截图窗口通过 primary monitor 的位置/尺寸配置后进入 fullscreen；页面 CSS 重置边距、padding 和窗口阴影，并用完整固定定位画布覆盖。
+- 检查选区 create/move/resize 状态、四边/四角 hit target、pointer capture/lost capture 回滚、视口边界约束、按钮确认后显示和底部避让。
+- 检查快捷键 input 录入、失焦恢复、默认值序列化兼容、前后端参数命名、注册冲突回退及应用主线程隔离。
+- `git diff --check` 和 Tauri JSON 配置语法检查通过；Cargo Windows-only 依赖声明已人工核对。
+- 未执行构建、测试、开发服务器或运行验证（遵循项目约束）。
+
+未决事项与限制：
+
+- 全屏/WebView 的 Windows 显示、每边缘手柄热区、DPI 映射、多显示器边缘和系统文件对话框置顶情况需目标 Windows 实机验证。
+- 操作系统或其它应用占用快捷键时无法注册；可更换快捷键或使用工具集按钮。
+- 快捷键可录入 Ctrl/Alt 加字母、数字或 F1–F12（可选 Shift）；不支持 Win/Meta、标点键和任意组合。
+- 未执行构建、测试或运行验证。
 
 ### 阶段 19：修复截图构建错误
 

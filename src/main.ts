@@ -24,8 +24,10 @@ const state: {
   usageLogs: UsageLog[];
   usageTotal: number;
   usagePage: number;
+  shortcutDraft: string | null;
+  shortcutWarning: string | null;
 } = {
-  snapshot: { connection: null, tokens: [], groups: [], lastSyncedAt: null, closeToTray: false },
+  snapshot: { connection: null, tokens: [], groups: [], lastSyncedAt: null, closeToTray: false, screenshotShortcut: "Ctrl+Shift+S" },
   selectedTokenId: null,
   selectedGroupId: null,
   notice: null,
@@ -35,7 +37,14 @@ const state: {
   usageLogs: [],
   usageTotal: 0,
   usagePage: 1,
+  shortcutDraft: null,
+  shortcutWarning: null,
 };
+
+let shortcutRecordingRequested = false;
+let shortcutRecordingReady = false;
+let shortcutRecordingVersion = 0;
+let shortcutRecordingUpdates: Promise<void> = Promise.resolve();
 
 function escapeHtml(value: string): string {
   return value
@@ -82,6 +91,7 @@ function renderGroup(group: TokenGroup): string {
 }
 
 function render(): void {
+  endShortcutRecording();
   configureCloseBehavior(state.snapshot.closeToTray);
   if (state.selectedTokenId && !state.snapshot.tokens.some((token) => token.id === state.selectedTokenId)) {
     state.selectedTokenId = null;
@@ -127,8 +137,9 @@ function render(): void {
           <section class="intro"><div><p class="eyebrow">DeskTool 工具集</p><h1>工具集</h1><p class="intro-copy">快捷启动常用桌面工具。</p></div></section>
           ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
           <section class="panel tools-panel">
-            <div class="panel-heading"><div><p class="section-kicker">屏幕工具</p><h2>区域截图</h2></div><kbd>${supportsRegionScreenshot ? "Ctrl + Shift + S" : "Windows 专属"}</kbd></div>
+            <div class="panel-heading"><div><p class="section-kicker">屏幕工具</p><h2>区域截图</h2></div><kbd>${supportsRegionScreenshot ? escapeHtml(state.snapshot.screenshotShortcut.replaceAll("+", " + ")) : "Windows 专属"}</kbd></div>
             <p class="intro-copy">${supportsRegionScreenshot ? "在主显示器上框选区域，可保存为 PNG 图片或直接复制到剪贴板。" : "区域截图目前仅支持 Windows。"}</p>
+            ${state.shortcutWarning ? `<p class="shortcut-warning">${escapeHtml(state.shortcutWarning)}</p>` : ""}
             <button class="primary-button" id="start-screenshot" type="button" ${supportsRegionScreenshot ? "" : "disabled"}>开始区域截图</button>
           </section>
         ` : state.page === "home" ? `
@@ -225,12 +236,25 @@ function render(): void {
           </section>
         ` : `
           <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button><button class="secondary-button" data-page="logs" type="button">日志</button></div></section>
-          <section class="intro"><div><p class="eyebrow">偏好设置</p><h1>设置</h1><p class="intro-copy">调整窗口关闭按钮的行为。</p></div></section>
+          <section class="intro"><div><p class="eyebrow">偏好设置</p><h1>设置</h1><p class="intro-copy">调整窗口行为和截图快捷键。</p></div></section>
           ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
           <section class="panel settings-panel">
             <p class="section-kicker">窗口行为</p><h2>关闭按钮</h2>
             <label class="setting-option"><input type="radio" name="close-behavior" value="tray" ${state.snapshot.closeToTray ? "checked" : ""} ${state.loading ? "disabled" : ""}/><span><strong>最小化到系统托盘</strong><small>关闭窗口时隐藏主窗口，应用继续在后台运行。</small></span></label>
             <label class="setting-option"><input type="radio" name="close-behavior" value="exit" ${state.snapshot.closeToTray ? "" : "checked"} ${state.loading ? "disabled" : ""}/><span><strong>直接关闭应用</strong><small>关闭窗口时退出 DeskTool。</small></span></label>
+          </section>
+          <section class="panel settings-panel shortcut-panel">
+            <p class="section-kicker">截图工具</p><h2>全局快捷键</h2>
+            <form id="screenshot-shortcut-form">
+              <label for="screenshot-shortcut"><span>截图快捷键</span></label>
+              <input id="screenshot-shortcut" type="text" value="${escapeHtml(state.shortcutDraft ?? state.snapshot.screenshotShortcut)}" readonly autocomplete="off" aria-describedby="shortcut-help" ${!supportsRegionScreenshot || state.loading ? "disabled" : ""} />
+              <p id="shortcut-help" class="intro-copy">${supportsRegionScreenshot ? "点击输入框后按下组合键。需包含 Ctrl 或 Alt，加字母、数字或 F1–F12。Esc 恢复已保存的组合键。" : "区域截图目前仅支持 Windows。"}</p>
+              ${state.shortcutWarning ? `<p class="shortcut-warning">${escapeHtml(state.shortcutWarning)}</p>` : ""}
+              <div class="shortcut-setting-actions">
+                <button class="primary-button" type="submit" ${!supportsRegionScreenshot || state.loading ? "disabled" : ""}>保存快捷键</button>
+                <button class="secondary-button" id="reset-screenshot-shortcut" type="button" ${!supportsRegionScreenshot || state.loading ? "disabled" : ""}>恢复默认</button>
+              </div>
+            </form>
           </section>
         `}
       </main>
@@ -255,7 +279,77 @@ function selectToken(tokenId: string | null): void {
   render();
 }
 
+function beginShortcutRecording(input: HTMLInputElement): void {
+  shortcutRecordingRequested = true;
+  shortcutRecordingReady = false;
+  const version = ++shortcutRecordingVersion;
+  const help = document.querySelector<HTMLElement>("#shortcut-help");
+  if (help) help.textContent = "正在准备快捷键录入...";
+  shortcutRecordingUpdates = shortcutRecordingUpdates.then(async () => {
+    await appApi.setScreenshotShortcutRecording(true);
+    if (version === shortcutRecordingVersion && shortcutRecordingRequested && document.activeElement === input) {
+      shortcutRecordingReady = true;
+      if (help) help.textContent = "请按下组合键，需包含 Ctrl 或 Alt，加字母、数字或 F1–F12。";
+    }
+  }).catch(() => {
+    if (version === shortcutRecordingVersion) setNotice("error", "快捷键录入初始化失败，请重新点击输入框。");
+  });
+}
+
+function endShortcutRecording(): void {
+  if (!shortcutRecordingRequested) return;
+  shortcutRecordingRequested = false;
+  shortcutRecordingReady = false;
+  const version = ++shortcutRecordingVersion;
+  shortcutRecordingUpdates = shortcutRecordingUpdates
+    .then(() => appApi.setScreenshotShortcutRecording(false))
+    .catch((error) => {
+      if (version === shortcutRecordingVersion) {
+        state.shortcutWarning = getErrorMessage(error, "截图快捷键恢复失败，请重新保存组合键。");
+        setNotice("error", state.shortcutWarning);
+      }
+    });
+}
+
+function recordShortcut(event: KeyboardEvent, input: HTMLInputElement): void {
+  if (event.key === "Tab") return;
+  event.preventDefault();
+  if (event.key === "Escape") {
+    state.shortcutDraft = null;
+    input.value = state.snapshot.screenshotShortcut;
+    input.blur();
+    return;
+  }
+  if (event.repeat || event.isComposing || !shortcutRecordingReady) return;
+  if (event.key === "Control" || event.key === "Alt" || event.key === "Shift" || event.key === "Meta") return;
+  const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3)
+    : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5)
+    : /^F([1-9]|1[0-2])$/.test(event.code) ? event.code : null;
+  const help = document.querySelector<HTMLElement>("#shortcut-help");
+  if ((!event.ctrlKey && !event.altKey) || event.metaKey || !key) {
+    if (help) help.textContent = "请按 Ctrl 或 Alt，加字母、数字或 F1–F12；可同时使用 Shift。";
+    return;
+  }
+  const modifiers = [event.ctrlKey ? "Ctrl" : "", event.altKey ? "Alt" : "", event.shiftKey ? "Shift" : ""].filter(Boolean);
+  state.shortcutDraft = [...modifiers, key].join("+");
+  input.value = state.shortcutDraft;
+  if (help) help.textContent = "组合键已录入，点击“保存快捷键”立即生效。";
+}
+
 function bindEvents(): void {
+  const shortcutInput = document.querySelector<HTMLInputElement>("#screenshot-shortcut");
+  if (shortcutInput) {
+    shortcutInput.addEventListener("focus", () => beginShortcutRecording(shortcutInput));
+    shortcutInput.addEventListener("blur", endShortcutRecording);
+    shortcutInput.addEventListener("keydown", (event) => recordShortcut(event, shortcutInput));
+  }
+  document.querySelector<HTMLFormElement>("#screenshot-shortcut-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveScreenshotShortcut(state.shortcutDraft ?? state.snapshot.screenshotShortcut);
+  });
+  document.querySelector<HTMLButtonElement>("#reset-screenshot-shortcut")?.addEventListener("click", () => {
+    void saveScreenshotShortcut("Ctrl+Shift+S");
+  });
   document.querySelectorAll<HTMLButtonElement>("[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
       const menu = button.closest(".window-menu") as HTMLDetailsElement | null;
@@ -349,6 +443,26 @@ async function saveCloseBehavior(closeToTray: boolean): Promise<void> {
   }
 }
 
+async function saveScreenshotShortcut(shortcut: string): Promise<void> {
+  if (!supportsRegionScreenshot || state.loading) return;
+  state.loading = true;
+  state.notice = null;
+  endShortcutRecording();
+  render();
+  try {
+    await shortcutRecordingUpdates;
+    state.snapshot = await appApi.setScreenshotShortcut(shortcut);
+    state.shortcutDraft = null;
+    state.shortcutWarning = null;
+    state.notice = { type: "success", text: "截图快捷键已保存并立即生效。" };
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "保存截图快捷键失败，原设置保留。") };
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
 async function saveConnection(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   if (state.loading) return;
@@ -421,6 +535,11 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 async function init(): Promise<void> {
+  window.addEventListener("blur", endShortcutRecording);
+  window.addEventListener("focus", () => {
+    const input = document.querySelector<HTMLInputElement>("#screenshot-shortcut");
+    if (input && !input.disabled && document.activeElement === input && !shortcutRecordingRequested) beginShortcutRecording(input);
+  });
   state.loading = true;
   render();
   void initWindowControls((message) => setNotice("error", message));
@@ -432,6 +551,7 @@ async function init(): Promise<void> {
   }).catch(() => setNotice("error", "截图快捷键监听初始化失败。"));
   try {
     state.snapshot = await appApi.getSnapshot();
+    if (supportsRegionScreenshot) state.shortcutWarning = await appApi.getScreenshotShortcutWarning();
   } catch (error) {
     state.notice = { type: "error", text: getErrorMessage(error, "读取本地数据失败。") };
   } finally {

@@ -4,6 +4,8 @@ mod newapi;
 mod storage;
 #[cfg(windows)]
 mod screenshot;
+#[cfg(windows)]
+mod screenshot_shortcut;
 
 use chrono::Utc;
 use error::AppError;
@@ -18,7 +20,7 @@ use tauri::{Emitter, Manager, State};
 #[cfg(windows)]
 use screenshot::ScreenshotState;
 #[cfg(windows)]
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use screenshot_shortcut::ScreenshotShortcutState;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,8 +29,9 @@ pub struct AppState {
 
 #[cfg(windows)]
 #[tauri::command]
-fn start_screenshot(app: tauri::AppHandle) -> Result<(), AppError> {
-    screenshot::begin_screenshot(&app)
+async fn start_screenshot(app: tauri::AppHandle) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || screenshot::begin_screenshot(&app))
+        .await.map_err(|_| AppError::Screenshot("启动截图任务失败，请重试。".to_string()))?
 }
 
 #[cfg(windows)]
@@ -45,12 +48,14 @@ fn screenshot_overlay_ready(app: tauri::AppHandle, state: State<'_, ScreenshotSt
 
 #[cfg(windows)]
 #[tauri::command]
-fn save_screenshot(
+async fn save_screenshot(
     app: tauri::AppHandle,
-    state: State<'_, ScreenshotState>,
     selection: screenshot::ScreenshotSelection,
 ) -> Result<bool, AppError> {
-    screenshot::save_screenshot_impl(app, state, selection)
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<ScreenshotState>();
+        screenshot::save_screenshot_impl(app.clone(), state, selection)
+    }).await.map_err(|_| AppError::Screenshot("保存截图任务失败，请重试。".to_string()))?
 }
 
 #[cfg(windows)]
@@ -67,6 +72,39 @@ fn copy_screenshot(
 #[tauri::command]
 fn cancel_screenshot(app: tauri::AppHandle, state: State<'_, ScreenshotState>) -> Result<(), AppError> {
     screenshot::cancel_screenshot_impl(app, state)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+async fn set_screenshot_shortcut(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    shortcut: String,
+) -> Result<AppSnapshot, AppError> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        screenshot_shortcut::update_shortcut(&app, &store, &shortcut)
+    }).await.map_err(|_| AppError::Screenshot("保存快捷键任务失败，请重试。".to_string()))?
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn get_screenshot_shortcut_warning(state: State<'_, ScreenshotShortcutState>) -> Option<String> {
+    state.warning()
+}
+
+#[cfg(windows)]
+#[tauri::command]
+async fn set_screenshot_shortcut_recording(
+    window: tauri::WebviewWindow,
+    recording: bool,
+) -> Result<(), AppError> {
+    if window.label() != "main" {
+        return Err(AppError::Validation("快捷键只能在主窗口设置。".to_string()));
+    }
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || screenshot_shortcut::set_recording(&app, recording))
+        .await.map_err(|_| AppError::Screenshot("快捷键录入状态更新失败。".to_string()))?
 }
 
 #[tauri::command]
@@ -235,6 +273,9 @@ macro_rules! app_handlers {
             save_screenshot,
             copy_screenshot,
             cancel_screenshot,
+            set_screenshot_shortcut,
+            get_screenshot_shortcut_warning,
+            set_screenshot_shortcut_recording,
             sync_from_newapi,
             get_usage_logs,
             set_close_to_tray,
@@ -267,13 +308,19 @@ pub fn run() {
     #[cfg(windows)]
     let builder = builder
         .manage(ScreenshotState::new())
+        .manage(ScreenshotShortcutState::new())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        if let Err(error) = screenshot::begin_screenshot(app) {
-                            let _ = app.emit("screenshot-error", error.to_string());
-                        }
+                .with_handler(|app, shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed
+                        && app.state::<ScreenshotShortcutState>().matches(shortcut)
+                    {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn_blocking(move || {
+                            if let Err(error) = screenshot::begin_screenshot(&app) {
+                                let _ = app.emit("screenshot-error", error.to_string());
+                            }
+                        });
                     }
                 })
                 .build(),
@@ -282,8 +329,10 @@ pub fn run() {
     builder
         .setup(|app| {
             #[cfg(windows)]
-            if app.global_shortcut().register("Ctrl+Shift+S").is_err() {
-                let _ = app.emit("screenshot-error", "快捷键 Ctrl+Shift+S 已被占用，可从工具集手动启动截图。");
+            {
+                let state = app.state::<AppState>();
+                // A failed registration is exposed by the warning command after the frontend is ready.
+                let _ = screenshot_shortcut::initialize(app.handle(), &state.store);
             }
             let icon = app.default_window_icon().cloned().ok_or_else(|| {
                 std::io::Error::other("The application icon is required for the system tray.")
@@ -331,6 +380,20 @@ pub fn run() {
             }
             if window.label() != "main" {
                 return;
+            }
+            #[cfg(windows)]
+            if matches!(event, tauri::WindowEvent::Focused(false) | tauri::WindowEvent::CloseRequested { .. }) {
+                let app = window.app_handle().clone();
+                let closing = matches!(event, tauri::WindowEvent::CloseRequested { .. });
+                tauri::async_runtime::spawn_blocking(move || {
+                    if closing || !app.get_webview_window("main")
+                        .and_then(|window| window.is_focused().ok()).unwrap_or(false)
+                    {
+                        if let Err(error) = screenshot_shortcut::set_recording(&app, false) {
+                            let _ = app.emit("screenshot-error", error.to_string());
+                        }
+                    }
+                });
             }
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
