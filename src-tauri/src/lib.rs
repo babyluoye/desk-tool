@@ -5,6 +5,8 @@ mod storage;
 #[cfg(windows)]
 mod screenshot;
 #[cfg(windows)]
+mod screenshot_annotation;
+#[cfg(windows)]
 mod screenshot_shortcut;
 
 use chrono::Utc;
@@ -60,12 +62,14 @@ async fn save_screenshot(
 
 #[cfg(windows)]
 #[tauri::command]
-fn copy_screenshot(
+async fn copy_screenshot(
     app: tauri::AppHandle,
-    state: State<'_, ScreenshotState>,
     selection: screenshot::ScreenshotSelection,
 ) -> Result<(), AppError> {
-    screenshot::copy_screenshot_impl(app, state, selection)
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<ScreenshotState>();
+        screenshot::copy_screenshot_impl(app.clone(), state, selection)
+    }).await.map_err(|_| AppError::Screenshot("复制截图任务失败，请重试。".to_string()))?
 }
 
 #[cfg(windows)]

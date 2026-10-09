@@ -1,4 +1,7 @@
-use crate::error::AppError;
+use crate::{
+    error::AppError,
+    screenshot_annotation::{apply_annotations, validate_annotations, ScreenshotAnnotation},
+};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use image::{imageops, DynamicImage, ImageFormat, RgbaImage};
 use screenshots::Screen;
@@ -25,6 +28,8 @@ pub struct ScreenshotSelection {
     height: f64,
     viewport_width: f64,
     viewport_height: f64,
+    #[serde(default)]
+    annotations: Vec<ScreenshotAnnotation>,
 }
 
 impl ScreenshotState {
@@ -212,6 +217,7 @@ fn crop_selection(
         return Err(AppError::Validation("请选择有效的截图区域。".to_string()));
     }
 
+    validate_annotations(&selection.annotations)?;
     let session = state
         .0
         .lock()
@@ -235,7 +241,10 @@ fn crop_selection(
     if right <= left || bottom <= top {
         return Err(AppError::Validation("截图区域太小。".to_string()));
     }
-    Ok(imageops::crop_imm(image, left, top, right - left, bottom - top).to_image())
+    let mut cropped = imageops::crop_imm(image, left, top, right - left, bottom - top).to_image();
+    drop(session);
+    apply_annotations(&mut cropped, &selection.annotations, selection.width, selection.height);
+    Ok(cropped)
 }
 
 fn finish_screenshot(app: &AppHandle, state: &ScreenshotState) -> Result<(), AppError> {
