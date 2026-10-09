@@ -100,9 +100,9 @@ function render(): void {
     <div class="shell ${state.showSettings ? "show-settings" : ""}">
       <header class="topbar">
         <div class="brand">
-          <span class="brand-mark">N</span>
+          <span class="brand-mark">D</span>
           <span>
-            <strong>NewAPI Desk</strong>
+            <strong>DeskTool</strong>
             <small>令牌分组管理</small>
           </span>
         </div>
@@ -218,7 +218,7 @@ function render(): void {
           <section class="panel settings-panel">
             <p class="section-kicker">窗口行为</p><h2>关闭按钮</h2>
             <label class="setting-option"><input type="radio" name="close-behavior" value="tray" ${state.snapshot.closeToTray ? "checked" : ""} ${state.loading ? "disabled" : ""}/><span><strong>最小化到系统托盘</strong><small>关闭窗口时隐藏主窗口，应用继续在后台运行。</small></span></label>
-            <label class="setting-option"><input type="radio" name="close-behavior" value="exit" ${state.snapshot.closeToTray ? "" : "checked"} ${state.loading ? "disabled" : ""}/><span><strong>直接关闭应用</strong><small>关闭窗口时退出 NewAPI Desk。</small></span></label>
+            <label class="setting-option"><input type="radio" name="close-behavior" value="exit" ${state.snapshot.closeToTray ? "" : "checked"} ${state.loading ? "disabled" : ""}/><span><strong>直接关闭应用</strong><small>关闭窗口时退出 DeskTool。</small></span></label>
           </section>
         `}
       </main>

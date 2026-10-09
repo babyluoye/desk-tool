@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "NewAPI Desk",
+  "productName": "DeskTool",
   "version": "0.1.0",
   "identifier": "com.newapi.desk",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "NewAPI Desk",
+        "title": "DeskTool",
         "width": 1180,
         "height": 820,
         "minWidth": 200,

@@ -192,7 +192,7 @@ pub fn run() {
                 .build()?;
             let tray = tauri::tray::TrayIconBuilder::with_id("main-tray")
                 .icon(icon)
-                .tooltip("NewAPI Desk")
+                .tooltip("DeskTool")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
@@ -257,5 +257,5 @@ pub fn run() {
             update_token_group
         ])
         .run(tauri::generate_context!())
-        .expect("error while running NewAPI Desk");
+        .expect("error while running DeskTool");
 }

@@ -113,7 +113,7 @@ struct TokenGroupUpdate {
 impl NewApiClient {
     pub fn new(connection: StoredConnection) -> Result<Self, AppError> {
         let http = Client::builder()
-            .user_agent("NewAPI-Desk/0.1")
+            .user_agent("DeskTool/0.1")
             .build()
             .map_err(|error| AppError::NewApi(format!("HTTP 客户端初始化失败：{error}")))?;
         Ok(Self { connection, http })

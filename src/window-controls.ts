@@ -18,7 +18,7 @@ export function configureCloseBehavior(hideToTray: boolean): void {
 
 export function updateWindowTitle(tokenName: string | null): void {
   selectedTokenName = tokenName;
-  const title = compactMedia.matches && tokenName ? tokenName : "NewAPI Desk";
+  const title = compactMedia.matches && tokenName ? tokenName : "DeskTool";
   document.title = title;
   const label = document.querySelector<HTMLElement>("#window-title");
   if (label) {

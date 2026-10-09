@@ -1,9 +1,13 @@
 [package]
-name = "newapi-token-manager"
+name = "desk-tool"
 version = "0.1.0"
-description = "A desktop manager for NewAPI token groups"
-authors = ["NewAPI Desk"]
+description = "DeskTool desktop manager for NewAPI token groups"
+authors = ["DeskTool"]
 edition = "2021"
+
+[[bin]]
+name = "desk-tool"
+path = "src/main.rs"
 
 [lib]
 name = "newapi_token_manager_lib"

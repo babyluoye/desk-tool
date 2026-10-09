@@ -2,14 +2,60 @@
 
 ## 当前阶段
 
-- 阶段：阶段 16，缓存 GitHub Actions 构建依赖
+- 阶段：阶段 17，GitHub Release 发布与 DeskTool 命名
 - 状态：已完成（静态审阅）
 - 开始时间：本次会话
 - 完成时间：本次会话
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 本阶段目标：新增 NewAPI 使用日志分页浏览，提供窗口菜单和系统托盘入口；新增关闭按钮“隐藏到托盘/直接关闭”设置并安全持久化。
-- 本阶段范围：日志 API/模型/页面，导航菜单/托盘入口，窗口关闭事件和设置页面；不改动令牌管理业务。
-- 下一阶段：GitHub 手动运行 Windows 工作流，观察 Rust 缓存命中与构建耗时
+- 本阶段目标：GitHub 每次手动构建创建按 UTC 年月日时分命名的 Release，上传独立 EXE/MSI/NSIS；将产品显示名改为 DeskTool。
+- 本阶段范围：GitHub workflow、产品/可执行文件名和阶段记录；Gitea 只同步可执行文件路径，不改发布流程。
+- 下一阶段：手动运行 GitHub 工作流验证 Release、文件名和安装包。
+
+### 阶段 17：GitHub Release 发布与 DeskTool 命名
+
+状态：已完成（静态审阅）
+
+已完成行为：
+
+- GitHub 手动 Windows 构建不再上传 Actions Artifacts；构建后直接创建 GitHub Release。
+- Release 名称/tag 格式为 UTC `Vyyyy-MMdd-HHmm`，例如 `V2026-0619-1427`；构建前预留 tag。Windows 安装包版本映射为合法三段数字版本：major=年份-2020、minor=月份、patch=(日期-1)*1440+当天分钟数，以便 Windows Installer 识别版本。
+- 为避免并发/同一分钟运行覆盖 Release，工作流在构建前检查并原子预留 tag；遇到同名 tag 时等待下一 UTC 分钟。
+- Release 附件包含 `DeskTool.exe`（独立运行文件）、MSI 安装包和 NSIS 安装 EXE；工作流检查三类产物存在后才发布。
+- Tauri 产品名、主窗口/网页标题、托盘提示、前端品牌、NewAPI 请求 User-Agent、Cargo binary/package 与 npm package 名称统一为 DeskTool/desk-tool。
+- Gitea workflow 不负责创建 Release，仍保留原 Artifacts 行为；为避免其构建因 Cargo binary 改名失败，已同步独立 exe 输出路径为 `desk-tool.exe`。
+
+本阶段修改文件：
+
+- `.github/workflows/build-windows-x64.yml`
+- `.gitea/workflows/build-windows-x64.yml`
+- `src-tauri/tauri.conf.json`
+- `src-tauri/Cargo.toml`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/newapi.rs`
+- `src/main.ts`
+- `src/window-controls.ts`
+- `index.html`
+- `package.json`
+- `package-lock.json`
+- `IMPLEMENTATION_STATUS.md`
+
+静态审阅结果：
+
+- 检查 GitHub workflow 无 Artifact 上传步骤；Release 文件来源明确为 `release-assets/*`。
+- 对照 Tauri target/release 的 Cargo binary、MSI/NSIS bundle 目录和复制目标名称。
+- 检查 release token 的 `contents: write` 权限、tag collision 检查/创建流程、UTC 格式化、Windows 包版本映射和 Tauri 配置版本注入步骤。
+- 发布资产在上传前统一命名为 `DeskTool.exe`、`DeskTool-Installer.msi`、`DeskTool-Setup.exe`，不含 Artifact 上传步骤。
+- 用例式范围检查版本映射：月份为 1–12、日期内分钟换算的 patch 不超过 44639，当前版本格式满足 Windows Installer 三段数字版本字段范围。
+- 检查核心 UI 与 Tauri 显示名称引用、package-lock 根 package 名同步；内部系统密钥环服务标识和应用 bundle identifier 保持不变，避免更名导致用户现存凭证不可读。
+- 未执行构建、打包、测试或运行验证（遵循项目约束）。
+
+未决事项与限制：
+
+- GitHub Release 需要仓库允许 Actions 使用 `GITHUB_TOKEN` 写入 contents/releases；仓库权限策略若禁用，发布步骤会失败。
+- Release tag 时间取构建前版本分配步骤执行的 UTC 时间；同一分钟的并发或重复构建会排到下一分钟。若预留 tag 后构建失败，会留下无 Release 的 tag；Windows 安装包版本在 Tauri 配置中使用对应的合法数字版本。
+- Windows MSI/NSIS 产物和独立 exe 文件名仍需首次 GitHub Actions 实际构建确认。
+- Gitea 工作流仍上传原有 Artifacts，按本次确认范围仅调整可执行文件路径。
+- 未执行构建或运行验证。
 
 ### 阶段 16：缓存 GitHub Actions 构建依赖
 
