@@ -69,7 +69,7 @@ pub fn create_pinned_screenshot(
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(true)
-        .shadow(false)
+        .shadow(true)
         .visible(false)
         .inner_size(width as f64 / scale, height as f64 / scale)
         .min_inner_size(120.0, 72.0)
