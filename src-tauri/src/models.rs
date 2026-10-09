@@ -34,6 +34,8 @@ pub struct AppSnapshot {
     pub tokens: Vec<ApiToken>,
     pub groups: Vec<TokenGroup>,
     pub last_synced_at: Option<String>,
+    #[serde(default)]
+    pub close_to_tray: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,4 +57,36 @@ pub struct SaveConnectionInput {
 pub struct UpdateTokenGroupInput {
     pub token_id: String,
     pub group_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUsageLogsInput {
+    pub page: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageLog {
+    pub id: i64,
+    pub created_at: i64,
+    pub username: String,
+    pub token_name: String,
+    pub model_name: String,
+    pub quota: i64,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub use_time: i64,
+    pub is_stream: bool,
+    pub channel_name: String,
+    pub group: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageLogPage {
+    pub items: Vec<UsageLog>,
+    pub total: u64,
+    pub page: u32,
+    pub page_size: u32,
 }

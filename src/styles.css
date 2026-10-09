@@ -25,6 +25,14 @@ button:focus-visible { outline: 2px solid #428be5; outline-offset: -2px; }
 .shell { min-height: calc(100vh - 36px); }
 .topbar { min-height: 64px; padding: 12px clamp(12px, 4vw, 36px); display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #fff; border-bottom: 1px solid #e1e7f0; }
 .brand, .topbar-actions, .sync-label, .panel-heading, .token-row, .group-option { display: flex; align-items: center; }
+.topbar-actions { gap: 8px; }
+.nav-button { min-height: 30px; padding: 6px 10px; }
+.window-menu { position: relative; }
+.window-menu summary { list-style: none; }
+.window-menu summary::-webkit-details-marker { display: none; }
+.window-menu-items { position: absolute; top: calc(100% + 5px); right: 0; z-index: 20; min-width: 130px; padding: 5px; border: 1px solid #e1e7f0; border-radius: 7px; background: #fff; box-shadow: 0 8px 24px #25344920; }
+.window-menu-items button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 4px; color: #43566e; background: transparent; text-align: left; font-size: 12px; }
+.window-menu-items button:hover { background: #eef5ff; }
 .brand { gap: 10px; min-width: 0; }
 .brand-mark { flex-shrink: 0; width: 32px; height: 32px; display: grid; place-items: center; color: #fff; background: #246ac4; border-radius: 10px; font-weight: 800; }
 .brand strong, .brand small { display: block; }
@@ -88,6 +96,24 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
 .empty-state small { color: #a7b1bf; font-size: 10px; }
 .footer { padding: 12px 0 24px; color: #8e9aab; font-size: 10px; line-height: 1.6; }
 .compact-toolbar, .compact-group-title { display: none; }
+.logs-panel { overflow: hidden; }
+.log-table-wrap { overflow-x: auto; }
+.log-table { width: 100%; border-collapse: collapse; white-space: nowrap; text-align: left; font-size: 11px; }
+.log-table th, .log-table td { padding: 11px 12px; border-bottom: 1px solid #edf1f6; }
+.log-table th { color: #8290a3; background: #fafcff; font-size: 10px; font-weight: 600; }
+.log-table td { color: #43566e; }
+.log-table td strong, .log-table td small { display: block; }
+.log-table td small { margin-top: 4px; color: #8995a6; font-size: 10px; }
+.log-table .empty-state { white-space: normal; }
+.log-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; color: #8693a6; font-size: 11px; }
+.log-pagination > div { display: flex; gap: 8px; }
+.settings-panel { max-width: 620px; padding: 20px; }
+.settings-panel h2 { margin-bottom: 16px; }
+.setting-option { display: flex; align-items: flex-start; gap: 10px; padding: 14px 10px; border-top: 1px solid #edf1f6; cursor: pointer; }
+.setting-option input { flex: 0 0 16px; width: 16px; height: 16px; margin: 2px 0 0; accent-color: #246ac4; }
+.setting-option strong, .setting-option small { display: block; }
+.setting-option strong { color: #354a63; font-size: 12px; }
+.setting-option small { margin-top: 5px; color: #8793a6; font-size: 11px; line-height: 1.5; }
 
 @media (max-width: 700px) {
   .content, .footer { width: calc(100% - 24px); }
@@ -99,8 +125,16 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
   .token-list, .group-list { min-height: 100px; }
 }
 
+@media (max-width: 520px) {
+  .topbar { flex-wrap: wrap; }
+  .topbar-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+}
+
 @media (max-width: 400px) {
   .topbar { padding: 10px 12px; }
+  .topbar-actions { gap: 4px; }
+  .nav-button { padding: 5px 6px; font-size: 10px; }
+  .sync-label { display: none; }
   .content { padding-top: 12px; }
   .connection-panel { padding: 14px 12px; }
   .connection-panel .panel-heading { flex-wrap: wrap; }
@@ -116,9 +150,17 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
   .topbar, .intro, .list-panel, .footer, .connection-panel { display: none; }
   .content { width: calc(100% - 12px); padding: 8px 0; }
   .compact-toolbar { display: grid; gap: 6px; margin-bottom: 10px; }
+  .compact-page-toolbar { display: grid; }
+  .logs-panel { min-width: 0; }
+  .log-table th, .log-table td { padding: 8px; }
+  .log-pagination { align-items: flex-start; flex-direction: column; padding: 10px; }
+  .settings-panel { padding: 12px; }
+  .setting-option { padding: 10px 4px; }
+  .setting-option > span { min-width: 0; }
+  .setting-option small { font-size: 10px; }
   .compact-toolbar > label { color: #708198; font-size: 10px; }
-  .compact-actions { display: flex; gap: 6px; }
-  .compact-actions > button { flex: 1; min-width: 0; padding: 6px 4px; font-size: 11px; }
+  .compact-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .compact-actions > button { flex: 1 1 calc(50% - 3px); min-width: 0; padding: 6px 4px; font-size: 11px; }
   .show-settings .connection-panel { display: block; }
   .connection-panel { padding: 10px; margin-bottom: 10px; }
   .connection-form { margin-top: 10px; gap: 10px; }

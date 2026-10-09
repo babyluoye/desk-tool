@@ -6,12 +6,13 @@ mod storage;
 use chrono::Utc;
 use error::AppError;
 use models::{
-    AppSnapshot, ConnectionConfig, SaveConnectionInput, SyncResult, UpdateTokenGroupInput,
+    AppSnapshot, ConnectionConfig, GetUsageLogsInput, SaveConnectionInput, SyncResult,
+    UpdateTokenGroupInput, UsageLogPage,
 };
 use newapi::NewApiClient;
 use std::sync::Arc;
 use storage::{SecureStore, StoredConnection};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -55,6 +56,27 @@ fn save_connection(
     })?;
     let snapshot = state.store.load_snapshot()?;
     Ok(snapshot)
+}
+
+#[tauri::command]
+fn set_close_to_tray(state: State<'_, AppState>, close_to_tray: bool) -> Result<AppSnapshot, AppError> {
+    let mut snapshot = state.store.load_snapshot()?;
+    snapshot.close_to_tray = close_to_tray;
+    state.store.save_snapshot(&snapshot)?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+async fn get_usage_logs(
+    state: State<'_, AppState>,
+    input: GetUsageLogsInput,
+) -> Result<UsageLogPage, AppError> {
+    let connection = state
+        .store
+        .load_connection()?
+        .ok_or_else(|| AppError::NotConfigured("请先配置 NewAPI 地址和管理凭证。".to_string()))?;
+    let client = NewApiClient::new(connection)?;
+    client.fetch_usage_logs(input.page).await
 }
 
 #[tauri::command]
@@ -164,6 +186,7 @@ pub fn run() {
             })?;
             let menu = tauri::menu::MenuBuilder::new(app)
                 .text("open-main", "打开主窗口")
+                .text("usage-logs", "使用日志")
                 .separator()
                 .text("quit", "退出")
                 .build()?;
@@ -174,6 +197,10 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "open-main" => restore_main_window(app),
+                    "usage-logs" => {
+                        restore_main_window(app);
+                        let _ = app.emit("navigate", "logs");
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -190,19 +217,43 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == "main"
-                && matches!(event, tauri::WindowEvent::Resized(_))
-                && window.is_minimized().unwrap_or(false)
-                && window.is_visible().unwrap_or(false)
-                && window.hide().is_err()
-            {
-                let _ = window.unminimize();
+            if window.label() != "main" {
+                return;
+            }
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    let close_to_tray = window
+                        .app_handle()
+                        .state::<AppState>()
+                        .store
+                        .load_snapshot()
+                        .map(|snapshot| snapshot.close_to_tray)
+                        .unwrap_or(false);
+                    api.prevent_close();
+                    if close_to_tray {
+                        if window.hide().is_err() {
+                            eprintln!("Unable to hide the main window to the system tray.");
+                        }
+                    } else {
+                        window.app_handle().exit(0);
+                    }
+                }
+                tauri::WindowEvent::Resized(_)
+                    if window.is_minimized().unwrap_or(false)
+                        && window.is_visible().unwrap_or(false)
+                        && window.hide().is_err() =>
+                {
+                    let _ = window.unminimize();
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             save_connection,
             sync_from_newapi,
+            get_usage_logs,
+            set_close_to_tray,
             update_token_group
         ])
         .run(tauri::generate_context!())

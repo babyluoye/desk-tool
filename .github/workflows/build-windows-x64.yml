@@ -19,6 +19,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Setup Rust
         shell: pwsh
@@ -36,9 +38,15 @@ jobs:
           rustc --version
           cargo --version
 
+      - name: Cache Rust dependencies and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: windows-x64-msvc
+
       - name: Install frontend dependencies
         shell: pwsh
-        run: npm install
+        run: npm ci
 
       - name: Generate Windows application icon
         shell: pwsh

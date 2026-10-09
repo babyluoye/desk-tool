@@ -1,6 +1,6 @@
 use crate::{
     error::AppError,
-    models::{ApiToken, TokenGroup, UpdateTokenGroupInput},
+    models::{ApiToken, TokenGroup, UpdateTokenGroupInput, UsageLog, UsageLogPage},
     storage::StoredConnection,
 };
 use reqwest::{Client, RequestBuilder};
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 const TOKEN_PAGE_SIZE: u32 = 100;
+const USAGE_LOG_PAGE_SIZE: u32 = 50;
 const TOKEN_EDIT_FIELDS: &[&str] = &[
     "name",
     "expired_time",
@@ -39,6 +40,42 @@ struct TokenPage {
     items: Vec<RemoteToken>,
     #[serde(default)]
     total: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteUsageLogPage {
+    #[serde(default)]
+    items: Vec<RemoteUsageLog>,
+    #[serde(default)]
+    total: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteUsageLog {
+    #[serde(default)]
+    id: i64,
+    #[serde(default)]
+    created_at: i64,
+    #[serde(default)]
+    username: String,
+    #[serde(default)]
+    token_name: String,
+    #[serde(default)]
+    model_name: String,
+    #[serde(default)]
+    quota: i64,
+    #[serde(default)]
+    prompt_tokens: i64,
+    #[serde(default)]
+    completion_tokens: i64,
+    #[serde(default)]
+    use_time: i64,
+    #[serde(default)]
+    is_stream: bool,
+    #[serde(default)]
+    channel_name: String,
+    #[serde(default)]
+    group: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,6 +143,41 @@ impl NewApiClient {
         }
 
         Ok(tokens)
+    }
+
+    pub async fn fetch_usage_logs(&self, page: u32) -> Result<UsageLogPage, AppError> {
+        if page == 0 {
+            return Err(AppError::Validation("日志页码无效。".to_string()));
+        }
+        let response = self
+            .request(self.http.get(self.url("/api/log/")))
+            .query(&[("p", page), ("page_size", USAGE_LOG_PAGE_SIZE), ("type", 2u32)])
+            .send()
+            .await
+            .map_err(|_| AppError::NewApi("获取使用日志失败，请检查服务连接和管理凭证。".to_string()))?;
+        let response: ApiResponse<RemoteUsageLogPage> = parse_response(response)
+            .await
+            .map_err(|_| AppError::NewApi("NewAPI 拒绝了使用日志请求。".to_string()))?;
+        let result = response.data.unwrap_or(RemoteUsageLogPage { items: Vec::new(), total: 0 });
+        Ok(UsageLogPage {
+            items: result.items.into_iter().map(|log| UsageLog {
+                id: log.id,
+                created_at: log.created_at,
+                username: log.username,
+                token_name: log.token_name,
+                model_name: log.model_name,
+                quota: log.quota,
+                prompt_tokens: log.prompt_tokens,
+                completion_tokens: log.completion_tokens,
+                use_time: log.use_time,
+                is_stream: log.is_stream,
+                channel_name: log.channel_name,
+                group: log.group,
+            }).collect(),
+            total: result.total,
+            page,
+            page_size: USAGE_LOG_PAGE_SIZE,
+        })
     }
 
     pub async fn fetch_groups(&self) -> Result<Vec<TokenGroup>, AppError> {

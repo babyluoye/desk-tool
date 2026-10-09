@@ -2,12 +2,89 @@
 
 ## 当前阶段
 
-- 阶段：阶段 14，修改分组时保留令牌其它属性
+- 阶段：阶段 16，缓存 GitHub Actions 构建依赖
 - 状态：已完成（静态审阅）
 - 开始时间：本次会话
 - 完成时间：本次会话
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 下一阶段：NewAPI 分组修改与 Windows 窗口实际验证
+- 本阶段目标：新增 NewAPI 使用日志分页浏览，提供窗口菜单和系统托盘入口；新增关闭按钮“隐藏到托盘/直接关闭”设置并安全持久化。
+- 本阶段范围：日志 API/模型/页面，导航菜单/托盘入口，窗口关闭事件和设置页面；不改动令牌管理业务。
+- 下一阶段：GitHub 手动运行 Windows 工作流，观察 Rust 缓存命中与构建耗时
+
+### 阶段 16：缓存 GitHub Actions 构建依赖
+
+状态：已完成（静态审阅）
+
+背景：
+
+- Windows Tauri bundle 阶段每次从干净 runner 下载 Cargo crates 并重新编译，Rust target 目录未缓存。
+- npm 安装没有锁文件，原先使用 `npm install`，依赖解析无法固定。
+
+改动：
+
+- GitHub Actions 使用 `Swatinem/rust-cache@v2` 缓存 `src-tauri -> target`，包含 Cargo registry/git 依赖和 Rust 构建产物；缓存共享键固定为 Windows x64 MSVC，工作流及 Cargo manifest 变化按 action 默认 key 机制刷新。
+- 新增 `package-lock.json`，npm 依赖安装切换为 `npm ci`。
+- `actions/setup-node@v4` 启用 npm 缓存，并根据 package-lock.json 生成依赖键。
+- 仅改 GitHub workflow；Gitea workflow 保持不变。
+
+本阶段修改文件：
+
+- `.github/workflows/build-windows-x64.yml`
+- `package-lock.json`
+- `IMPLEMENTATION_STATUS.md`
+
+静态审阅结果：
+
+- 核对 Rust workspace 路径与 Tauri manifest 目录一致。
+- 核对 npm 缓存依赖清单存在，`npm ci` 与锁文件配对。
+- YAML 结构人工审阅；未运行 workflow、npm 构建或 Rust 构建。
+
+未决事项与限制：
+
+- 首次 GitHub Actions 运行需要建立缓存，后续同一分支/依赖键的运行才会命中。
+- Rust cache 只能复用匹配 Windows runner、target、工具链和依赖配置的缓存；Cargo manifest/lockfile 变化会触发重新编译部分内容。
+- 缓存命中不代表整个 Tauri bundle 都免耗时，应用本身仍需编译和打包。
+- 未执行构建、测试或运行验证。
+
+### 阶段 15：使用日志列表与关闭行为设置
+
+状态：已完成（静态审阅）
+
+已完成行为：
+
+- 增加主窗口“菜单”下拉导航和窄屏工具栏，可进入令牌管理、使用日志或设置；托盘菜单新增“使用日志”，点击后恢复主窗口并打开日志页。
+- 增加 NewAPI `GET /api/log/` 消费日志（type=2）只读分页请求，每页 50 条；页面展示时间、用户/令牌名称、模型、分组、额度、输入/输出 Token、耗时和流式标记。
+- Rust API 边界只将日志白名单字段序列化给前端，不读取/返回 `content`、`other`、IP、请求 ID 或密钥；查询错误避免透传可能含敏感信息的服务端响应。
+- 增加设置页面，关闭按钮可设置为隐藏到托盘或直接退出；设置写入系统密钥环中已使用的安全快照，旧快照缺字段默认为直接关闭，保留既有行为。
+- Tauri 原生 CloseRequested 按设置隐藏窗口或允许退出；窗口关闭按钮 tooltip 同步展示当前关闭行为。
+
+本阶段修改文件：
+
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/models.rs`
+- `src-tauri/src/newapi.rs`
+- `src-tauri/capabilities/default.json`
+- `src/api.ts`
+- `src/domain.ts`
+- `src/main.ts`
+- `src/styles.css`
+- `src/window-controls.ts`
+- `IMPLEMENTATION_STATUS.md`
+
+静态审阅结果：
+
+- 对照 NewAPI 官方接口文档及当前主线 controller/model，确认管理员 `GET /api/log/` 使用 `p`、`page_size` 分页；仅查询消费类型日志。
+- 检查 Rust 序列化日志模型白名单，不包含内容、额外字段、IP、请求 ID 或任何 API key。
+- 核对 Tauri command 名称/参数与前端 invoke 调用、托盘菜单 ID 与导航事件、关闭事件设置读取以及旧快照 Serde 默认值。
+- `git diff --check` 通过。
+- 未执行构建、类型检查、测试、开发服务器或运行验证（遵循项目约束）。
+
+未决事项与限制：
+
+- 部署版 NewAPI 日志分页 data 结构和具体字段仍需目标实例验证；若部署定制版本字段不同，需调整日志适配器。
+- NewAPI 日志查询需要管理权限；认证或权限不足时界面会提示通用错误。
+- 未做筛选、排序或时间范围控件；当前提供按服务端最新时间排序的消费日志分页列表。
+- 未执行构建、测试或运行验证。
 
 ### 阶段 14：修改分组时保留令牌其它属性
 

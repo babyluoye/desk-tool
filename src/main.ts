@@ -1,6 +1,7 @@
-import { initWindowControls, updateWindowTitle } from "./window-controls";
+import { configureCloseBehavior, initWindowControls, updateWindowTitle } from "./window-controls";
+import { listen } from "@tauri-apps/api/event";
 import { appApi } from "./api";
-import type { ApiToken, AppSnapshot, TokenGroup } from "./domain";
+import type { ApiToken, AppSnapshot, TokenGroup, UsageLog } from "./domain";
 import "./styles.css";
 
 const appElement = document.querySelector<HTMLDivElement>("#app");
@@ -18,13 +19,21 @@ const state: {
   notice: { type: "success" | "error" | "info"; text: string } | null;
   loading: boolean;
   showSettings: boolean;
+  page: "home" | "logs" | "settings";
+  usageLogs: UsageLog[];
+  usageTotal: number;
+  usagePage: number;
 } = {
-  snapshot: { connection: null, tokens: [], groups: [], lastSyncedAt: null },
+  snapshot: { connection: null, tokens: [], groups: [], lastSyncedAt: null, closeToTray: false },
   selectedTokenId: null,
   selectedGroupId: null,
   notice: null,
   loading: false,
   showSettings: false,
+  page: "home",
+  usageLogs: [],
+  usageTotal: 0,
+  usagePage: 1,
 };
 
 function escapeHtml(value: string): string {
@@ -50,6 +59,12 @@ function renderToken(token: ApiToken): string {
   `;
 }
 
+function renderUsageLog(log: UsageLog): string {
+  const date = log.createdAt > 0 ? new Date(log.createdAt * 1000).toLocaleString() : "—";
+  const tokenCount = log.promptTokens + log.completionTokens;
+  return `<tr><td>${escapeHtml(date)}</td><td><strong>${escapeHtml(log.username || "—")}</strong><small>${escapeHtml(log.tokenName || "—")}</small></td><td>${escapeHtml(log.modelName || "—")}</td><td>${escapeHtml(log.channelName || "—")}</td><td>${escapeHtml(log.group || "—")}</td><td>${log.quota.toLocaleString()}</td><td>${tokenCount.toLocaleString()}<small>输入 ${log.promptTokens.toLocaleString()} · 输出 ${log.completionTokens.toLocaleString()}</small></td><td>${log.useTime.toLocaleString()} 秒${log.isStream ? " · 流式" : ""}</td></tr>`;
+}
+
 function renderGroup(group: TokenGroup): string {
   const selectedToken = state.snapshot.tokens.find((token) => token.id === state.selectedTokenId);
   const isCurrent = selectedToken?.groupId === group.id;
@@ -66,6 +81,7 @@ function renderGroup(group: TokenGroup): string {
 }
 
 function render(): void {
+  configureCloseBehavior(state.snapshot.closeToTray);
   if (state.selectedTokenId && !state.snapshot.tokens.some((token) => token.id === state.selectedTokenId)) {
     state.selectedTokenId = null;
     state.selectedGroupId = null;
@@ -91,11 +107,20 @@ function render(): void {
           </span>
         </div>
         <div class="topbar-actions">
+          <details class="window-menu">
+            <summary class="secondary-button nav-button">菜单</summary>
+            <div class="window-menu-items">
+              <button data-page="home" type="button">令牌管理</button>
+              <button data-page="logs" type="button">使用日志</button>
+              <button data-page="settings" type="button">设置</button>
+            </div>
+          </details>
           <span class="sync-label"><span class="status-dot ${connection ? "online" : "offline"}"></span>${connection ? "已配置" : "未配置"}</span>
         </div>
       </header>
 
       <main class="content">
+        ${state.page === "home" ? `
         <section class="compact-toolbar" aria-label="紧凑模式操作">
           <label for="compact-token">API 令牌</label>
           <select id="compact-token" ${state.loading ? "disabled" : ""}>
@@ -103,6 +128,8 @@ function render(): void {
             ${state.snapshot.tokens.map((token) => `<option value="${escapeHtml(token.id)}" ${state.selectedTokenId === token.id ? "selected" : ""}>${escapeHtml(token.name)}</option>`).join("")}
           </select>
           <div class="compact-actions">
+            <button class="secondary-button" data-page="logs" type="button">日志</button>
+            <button class="secondary-button" data-page="settings" type="button">设置</button>
             <button class="secondary-button" id="compact-sync" type="button" ${state.loading ? "disabled" : ""}>${state.loading ? "处理中..." : "同步"}</button>
             <button class="secondary-button" id="toggle-settings" type="button" aria-expanded="${state.showSettings}">${state.showSettings ? "收起配置" : "连接配置"}</button>
           </div>
@@ -171,8 +198,31 @@ function render(): void {
             </button>
           </div>
         </section>
+        ` : state.page === "logs" ? `
+          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button><button class="secondary-button" data-page="settings" type="button">设置</button></div></section>
+          <section class="intro">
+            <div><p class="eyebrow">NewAPI 使用记录</p><h1>使用日志</h1><p class="intro-copy">显示服务器记录的消费用量，不包含令牌密钥和请求内容。</p></div>
+            <button class="secondary-button" id="refresh-logs" type="button" ${state.loading ? "disabled" : ""}>${state.loading ? "加载中..." : "刷新"}</button>
+          </section>
+          ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
+          <section class="panel logs-panel">
+            <div class="log-table-wrap"><table class="log-table"><thead><tr><th>时间</th><th>用户 / 令牌</th><th>模型</th><th>渠道</th><th>分组</th><th>额度</th><th>Token</th><th>耗时</th></tr></thead><tbody>
+              ${state.usageLogs.length ? state.usageLogs.map(renderUsageLog).join("") : `<tr><td colspan="8" class="empty-state">${state.loading ? "正在读取使用日志..." : "暂无使用日志"}</td></tr>`}
+            </tbody></table></div>
+            <div class="log-pagination"><span>共 ${state.usageTotal} 条 · 第 ${state.usagePage} 页</span><div><button class="secondary-button" id="logs-prev" type="button" ${state.loading || state.usagePage <= 1 ? "disabled" : ""}>上一页</button><button class="secondary-button" id="logs-next" type="button" ${state.loading || state.usagePage * 50 >= state.usageTotal ? "disabled" : ""}>下一页</button></div></div>
+          </section>
+        ` : `
+          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button><button class="secondary-button" data-page="logs" type="button">日志</button></div></section>
+          <section class="intro"><div><p class="eyebrow">偏好设置</p><h1>设置</h1><p class="intro-copy">调整窗口关闭按钮的行为。</p></div></section>
+          ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
+          <section class="panel settings-panel">
+            <p class="section-kicker">窗口行为</p><h2>关闭按钮</h2>
+            <label class="setting-option"><input type="radio" name="close-behavior" value="tray" ${state.snapshot.closeToTray ? "checked" : ""} ${state.loading ? "disabled" : ""}/><span><strong>最小化到系统托盘</strong><small>关闭窗口时隐藏主窗口，应用继续在后台运行。</small></span></label>
+            <label class="setting-option"><input type="radio" name="close-behavior" value="exit" ${state.snapshot.closeToTray ? "" : "checked"} ${state.loading ? "disabled" : ""}/><span><strong>直接关闭应用</strong><small>关闭窗口时退出 NewAPI Desk。</small></span></label>
+          </section>
+        `}
       </main>
-      <footer class="footer">令牌分组更新将先写入 NewAPI，成功后才更新本地缓存。</footer>
+      ${state.page === "home" ? '<footer class="footer">令牌分组更新将先写入 NewAPI，成功后才更新本地缓存。</footer>' : ""}
     </div>
   `;
 
@@ -194,6 +244,29 @@ function selectToken(tokenId: string | null): void {
 }
 
 function bindEvents(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const menu = button.closest(".window-menu") as HTMLDetailsElement | null;
+      if (menu) menu.open = false;
+      const page = button.dataset.page;
+      if (page === "logs") void openUsageLogs(1);
+      else if (page === "settings") {
+        state.page = "settings";
+        state.notice = null;
+        render();
+      } else if (page === "home") {
+        state.page = "home";
+        state.notice = null;
+        render();
+      }
+    });
+  });
+  document.querySelector<HTMLButtonElement>("#refresh-logs")?.addEventListener("click", () => void openUsageLogs(state.usagePage));
+  document.querySelector<HTMLButtonElement>("#logs-prev")?.addEventListener("click", () => void openUsageLogs(state.usagePage - 1));
+  document.querySelector<HTMLButtonElement>("#logs-next")?.addEventListener("click", () => void openUsageLogs(state.usagePage + 1));
+  document.querySelectorAll<HTMLInputElement>('input[name="close-behavior"]').forEach((input) => {
+    input.addEventListener("change", () => void saveCloseBehavior(input.value === "tray"));
+  });
   document.querySelector<HTMLSelectElement>("#compact-token")?.addEventListener("change", (event) => {
     selectToken((event.currentTarget as HTMLSelectElement).value || null);
   });
@@ -220,6 +293,41 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("#sync")?.addEventListener("click", sync);
   document.querySelector<HTMLButtonElement>("#update-group")?.addEventListener("click", updateGroup);
   document.querySelector<HTMLFormElement>("#connection-form")?.addEventListener("submit", saveConnection);
+}
+
+async function openUsageLogs(page: number): Promise<void> {
+  if (state.loading || page < 1) return;
+  state.page = "logs";
+  state.loading = true;
+  state.notice = null;
+  render();
+  try {
+    const result = await appApi.getUsageLogs(page);
+    state.usageLogs = result.items;
+    state.usageTotal = result.total;
+    state.usagePage = result.page;
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "读取使用日志失败。") };
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+async function saveCloseBehavior(closeToTray: boolean): Promise<void> {
+  if (state.loading) return;
+  state.loading = true;
+  state.notice = null;
+  render();
+  try {
+    state.snapshot = await appApi.setCloseToTray(closeToTray);
+    state.notice = { type: "success", text: "关闭按钮设置已保存。" };
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "保存设置失败。") };
+  } finally {
+    state.loading = false;
+    render();
+  }
 }
 
 async function saveConnection(event: SubmitEvent): Promise<void> {
@@ -297,6 +405,9 @@ async function init(): Promise<void> {
   state.loading = true;
   render();
   void initWindowControls((message) => setNotice("error", message));
+  void listen<string>("navigate", (event) => {
+    if (event.payload === "logs") void openUsageLogs(1);
+  }).catch(() => setNotice("error", "系统托盘导航初始化失败。"));
   try {
     state.snapshot = await appApi.getSnapshot();
   } catch (error) {

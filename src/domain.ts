@@ -26,6 +26,7 @@ export interface AppSnapshot {
   tokens: ApiToken[];
   groups: TokenGroup[];
   lastSyncedAt: string | null;
+  closeToTray: boolean;
 }
 
 export interface SyncResult {
@@ -36,4 +37,26 @@ export interface SyncResult {
 export interface UpdateTokenGroupInput {
   tokenId: string;
   groupId: string;
+}
+
+export interface UsageLog {
+  id: number;
+  createdAt: number;
+  username: string;
+  tokenName: string;
+  modelName: string;
+  quota: number;
+  promptTokens: number;
+  completionTokens: number;
+  useTime: number;
+  isStream: boolean;
+  channelName: string;
+  group: string;
+}
+
+export interface UsageLogPage {
+  items: UsageLog[];
+  total: number;
+  page: number;
+  pageSize: number;
 }

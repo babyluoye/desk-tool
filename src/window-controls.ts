@@ -6,6 +6,15 @@ let selectedTokenName: string | null = null;
 let requestedTitle = "";
 let titleUpdates: Promise<void> = Promise.resolve();
 let reportError: (message: string) => void = () => {};
+let closeToTray = false;
+
+export function configureCloseBehavior(hideToTray: boolean): void {
+  closeToTray = hideToTray;
+  const closeButton = document.querySelector<HTMLButtonElement>("#window-close");
+  if (!closeButton) return;
+  closeButton.title = closeToTray ? "最小化到系统托盘" : "关闭应用";
+  closeButton.setAttribute("aria-label", closeButton.title);
+}
 
 export function updateWindowTitle(tokenName: string | null): void {
   selectedTokenName = tokenName;
@@ -60,7 +69,7 @@ export async function initWindowControls(onError: (message: string) => void): Pr
   // Hiding directly makes tray minimization independent of native minimize event timing.
   bindWindowButton("#window-minimize", () => currentWindow.hide(), "最小化到托盘失败，窗口仍保持打开。");
   bindWindowButton("#window-maximize", () => currentWindow.toggleMaximize(), "调整窗口大小失败。");
-  bindWindowButton("#window-close", () => currentWindow.close(), "关闭窗口失败，请通过托盘菜单退出。");
+  bindWindowButton("#window-close", () => currentWindow.close(), "关闭窗口操作失败。");
   const dragArea = document.querySelector<HTMLElement>(".titlebar-drag");
   dragArea?.addEventListener("mousedown", (event) => {
     if (event.button !== 0 || event.detail !== 1) return;
