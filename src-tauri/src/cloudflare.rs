@@ -36,7 +36,6 @@ struct RawZone {
 #[derive(Debug, Deserialize)]
 struct RawDnsRecord {
     id: String,
-    zone_id: String,
     r#type: String,
     name: String,
     content: Option<String>,
@@ -108,23 +107,7 @@ impl CloudflareClient {
             let response: Envelope<Vec<RawDnsRecord>> = self.send(self.http.get(endpoint)).await?;
             let batch = response.result.ok_or_else(|| AppError::Cloudflare("Cloudflare 未返回 DNS 记录。".into()))?;
             let batch_len = batch.len();
-            records.extend(batch.into_iter().map(|record| {
-                let priority = record.priority.or_else(|| {
-                    record.data.as_ref().and_then(|data| data.get("priority")).and_then(Value::as_u64)
-                        .and_then(|value| u16::try_from(value).ok())
-                });
-                DnsRecord {
-                    id: record.id,
-                    zone_id: record.zone_id,
-                    record_type: record.r#type,
-                    name: record.name,
-                    content: record.content.unwrap_or_default(),
-                    ttl: record.ttl,
-                    proxied: record.proxied.unwrap_or(false),
-                    priority,
-                    data: record.data,
-                }
-            }));
+            records.extend(batch.into_iter().map(|record| map_dns_record(record, zone_id)));
             let total_pages = response.result_info.and_then(|info| info.total_pages);
             if total_pages.map(|total| page >= total).unwrap_or(batch_len < PAGE_SIZE as usize) {
                 return Ok(records);
@@ -157,7 +140,7 @@ impl CloudflareClient {
         } else {
             self.http.post(endpoint).json(&body)
         };
-        let _: Envelope<RawDnsRecord> = self.send(request).await?;
+        let _: Envelope<Value> = self.send(request).await?;
         Ok(())
     }
 
@@ -194,6 +177,24 @@ impl CloudflareClient {
             return Err(AppError::Cloudflare("Cloudflare 拒绝了请求，请检查 Token 权限和输入内容。".into()));
         }
         Ok(envelope)
+    }
+}
+
+fn map_dns_record(record: RawDnsRecord, zone_id: &str) -> DnsRecord {
+    let priority = record.priority.or_else(|| {
+        record.data.as_ref().and_then(|data| data.get("priority")).and_then(Value::as_u64)
+            .and_then(|value| u16::try_from(value).ok())
+    });
+    DnsRecord {
+        id: record.id,
+        zone_id: zone_id.to_string(),
+        record_type: record.r#type,
+        name: record.name,
+        content: record.content.unwrap_or_default(),
+        ttl: record.ttl,
+        proxied: record.proxied.unwrap_or(false),
+        priority,
+        data: record.data,
     }
 }
 
@@ -337,4 +338,29 @@ fn valid_service_part(value: &str) -> bool {
 fn bounded_u16(value: Option<u64>, label: &str) -> Result<u16, AppError> {
     value.filter(|number| *number <= u16::MAX as u64).map(|number| number as u16)
         .ok_or_else(|| AppError::Validation(format!("{label}必须为 0 至 65535。")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{map_dns_record, Envelope, RawDnsRecord};
+
+    #[test]
+    fn maps_dns_response_without_zone_id_from_request_path() {
+        let raw: RawDnsRecord = serde_json::from_str(
+            r#"{"id":"023e105f4ecef8ad9ca31a8372d0c353","type":"A","name":"example.com","content":"198.51.100.4","ttl":3600,"proxied":false}"#,
+        ).unwrap();
+        let record = map_dns_record(raw, "123e105f4ecef8ad9ca31a8372d0c353");
+        assert_eq!(record.zone_id, "123e105f4ecef8ad9ca31a8372d0c353");
+        assert_eq!(record.content, "198.51.100.4");
+        assert_eq!(record.ttl, 3600);
+    }
+
+    #[test]
+    fn accepts_dns_write_response_with_documented_record_fields() {
+        let response: Envelope<serde_json::Value> = serde_json::from_str(
+            r#"{"success":true,"result":{"id":"023e105f4ecef8ad9ca31a8372d0c353","type":"A","name":"example.com","content":"198.51.100.4","ttl":3600,"proxied":false}}"#,
+        ).unwrap();
+        assert!(response.success);
+        assert!(response.result.is_some());
+    }
 }

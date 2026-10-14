@@ -23,16 +23,19 @@
 - Rust command 只允许主窗口调用；固定 HTTPS Cloudflare API origin，使用 Bearer Token，禁止重定向，设置请求超时与 4 MiB 响应限制。错误不透传第三方响应、Token 或底层网络内容。
 - DNS 更新/删除服务端成功后再刷新记录列表；修改失败保留原列表并给出通用错误，修改成功但刷新失败则提示已保存并允许手动刷新。
 - 校验 Zone/记录标识、记录类型、域名范围、IP/目标、TTL、TXT/CAA 内容和 SRV/MX 数值；添加 Rust 后端权限边界，防止前端传入任意 Zone 标识。
+- 后续修正 DNS 响应适配：列表结果不再要求 API 返回记录内的 `zone_id`，而使用请求路径的已校验 Zone ID；新增/编辑成功响应按通用 JSON envelope 解析，不要求完整 DNS 记录模型。
 
 本阶段修改文件：
 
 - `AGENTS.md`、`IMPLEMENTATION_STATUS.md`
-- `src-tauri/Cargo.toml`、`src-tauri/src/cloudflare.rs`（新增）、`src-tauri/src/error.rs`、`src-tauri/src/lib.rs`、`src-tauri/src/models.rs`、`src-tauri/src/storage.rs`
+- `src-tauri/Cargo.toml`、`src-tauri/src/cloudflare.rs`（新增及响应适配修正）、`src-tauri/src/error.rs`、`src-tauri/src/lib.rs`、`src-tauri/src/models.rs`、`src-tauri/src/storage.rs`
 - `src/api.ts`、`src/domain.ts`、`src/main.ts`、`src/styles.css`
 
 静态审阅结果：
 
-- 核对 Cloudflare 官方 API Zone 列表及 DNS CRUD 路由、Bearer Token 认证、DNS Write / Zone Read 权限、SRV/CAA data 字段及 PATCH 更新操作。
+- 核对 Cloudflare 官方 API Zone 列表及 DNS CRUD 路由、Bearer Token 认证、DNS Write / Zone Read 权限、SRV/CAA data 字段及 PATCH 更新操作；官方编辑接口确认使用 PATCH，与现有请求方法一致。
+- 对照官方 List DNS Records 与 Edit DNS Record 示例：结果对象不要求 `zone_id`，故改用请求路径中的 Zone ID；写入成功只需确认 envelope，不强制反序列化无用结果记录字段。
+- 新增静态单元测试代码覆盖省略 `zone_id` 的记录映射及成功响应 envelope；未运行。
 - 人工检查 Tauri command 注册（Windows/non-Windows）、调用窗口校验、密钥环数据隔离、前后端 camelCase 字段、HTML 转义和记录表单协议。
 - 检查 DNS 记录输入范围和 zone 归属验证；确认请求仅由 Rust 后端发往固定 origin，不将 Token 放到前端状态、普通快照、日志或错误信息。
 - `git diff --check` 通过；未执行 TypeScript/Rust 自动检查。
@@ -41,6 +44,7 @@
 未决事项与限制：
 
 - Cloudflare API Token 建议具备 Zone:Read 和 DNS:Edit 权限；若使用者 Token 权限范围不匹配，Zone 列表或修改会被拒绝。
+- Cloudflare 官方文档的示例响应未展示 DNS 记录 `zone_id`；已按当前请求 Zone ID 填充前端模型，仍待真实 Windows 环境验证实际响应及 DNS CRUD。
 - 首版表单只编辑常见八种 DNS 类型；其它类型仍能查看/删除，编辑按钮禁用。
 - 代理打开时 TTL 由 Cloudflare 要求为 Auto，表单随之设置 TTL=1。
 - Windows 实机需验证系统密钥环、不同 Cloudflare 帐户/权限范围、分页、DNS 记录实际响应结构、代理/TTL 行为和失败刷新交互。
