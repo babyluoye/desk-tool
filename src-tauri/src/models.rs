@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -110,4 +111,41 @@ pub struct UsageLogPage {
     pub total: u64,
     pub page: u32,
     pub page_size: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudflareZone {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DnsRecord {
+    pub id: String,
+    pub zone_id: String,
+    pub record_type: String,
+    pub name: String,
+    pub content: String,
+    pub ttl: u32,
+    pub proxied: bool,
+    pub priority: Option<u16>,
+    pub data: Option<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DnsRecordInput {
+    pub zone_id: String,
+    pub zone_name: String,
+    pub record_id: Option<String>,
+    pub record_type: String,
+    pub name: String,
+    pub content: String,
+    pub ttl: u32,
+    pub proxied: bool,
+    pub priority: Option<u16>,
+    pub data: Option<Value>,
 }

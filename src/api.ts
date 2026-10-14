@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSnapshot, SyncResult, TranslationSettings, UpdateTokenGroupInput, UsageLogPage } from "./domain";
+import type { AppSnapshot, CloudflareZone, DnsRecord, DnsRecordInput, SyncResult, TranslationSettings, UpdateTokenGroupInput, UsageLogPage } from "./domain";
 
 export const appApi = {
   getSnapshot(): Promise<AppSnapshot> {
@@ -20,6 +20,34 @@ export const appApi = {
 
   getUsageLogs(page: number): Promise<UsageLogPage> {
     return invoke<UsageLogPage>("get_usage_logs", { input: { page } });
+  },
+
+  getCloudflareTokenConfigured(): Promise<boolean> {
+    return invoke<boolean>("get_cloudflare_token_configured");
+  },
+
+  saveCloudflareToken(token: string): Promise<boolean> {
+    return invoke<boolean>("save_cloudflare_token", { token });
+  },
+
+  clearCloudflareToken(): Promise<void> {
+    return invoke<void>("clear_cloudflare_token");
+  },
+
+  listCloudflareZones(): Promise<CloudflareZone[]> {
+    return invoke<CloudflareZone[]>("list_cloudflare_zones");
+  },
+
+  listDnsRecords(zoneId: string): Promise<DnsRecord[]> {
+    return invoke<DnsRecord[]>("list_dns_records", { zoneId });
+  },
+
+  saveDnsRecord(input: DnsRecordInput): Promise<void> {
+    return invoke<void>("save_dns_record", { input });
+  },
+
+  deleteDnsRecord(zoneId: string, recordId: string): Promise<void> {
+    return invoke<void>("delete_dns_record", { zoneId, recordId });
   },
 
   setCloseToTray(closeToTray: boolean): Promise<AppSnapshot> {

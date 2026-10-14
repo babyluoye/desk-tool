@@ -62,6 +62,37 @@ export interface UsageLogPage {
   pageSize: number;
 }
 
+export interface CloudflareZone {
+  id: string;
+  name: string;
+  status: string;
+}
+
+export interface DnsRecord {
+  id: string;
+  zoneId: string;
+  recordType: string;
+  name: string;
+  content: string;
+  ttl: number;
+  proxied: boolean;
+  priority: number | null;
+  data: Record<string, unknown> | null;
+}
+
+export interface DnsRecordInput {
+  zoneId: string;
+  zoneName: string;
+  recordId: string | null;
+  recordType: string;
+  name: string;
+  content: string;
+  ttl: number;
+  proxied: boolean;
+  priority: number | null;
+  data: Record<string, unknown> | null;
+}
+
 export type TranslationProvider = "google_free" | "openai";
 export interface TranslationSettings {
   provider: TranslationProvider;

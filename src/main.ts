@@ -1,7 +1,7 @@
 import { configureCloseBehavior, initWindowControls, updateWindowTitle } from "./window-controls";
 import { listen } from "@tauri-apps/api/event";
 import { appApi } from "./api";
-import type { ApiToken, AppSnapshot, TokenGroup, TranslationSettings, UsageLog } from "./domain";
+import type { ApiToken, AppSnapshot, CloudflareZone, DnsRecord, DnsRecordInput, TokenGroup, TranslationSettings, UsageLog } from "./domain";
 import { languageOptions } from "./translation";
 import { icon, renderIcons } from "./icons";
 import "./styles.css";
@@ -22,7 +22,14 @@ const state: {
   notice: { type: "success" | "error" | "info"; text: string } | null;
   loading: boolean;
   showSettings: boolean;
-  page: "home" | "logs" | "settings" | "tools";
+  page: "home" | "logs" | "settings" | "tools" | "domains";
+  cloudflareTokenConfigured: boolean;
+  cloudflareZones: CloudflareZone[];
+  selectedZone: CloudflareZone | null;
+  dnsRecords: DnsRecord[];
+  editingDnsRecord: DnsRecord | null;
+  dnsFormDraft: Record<string, string> | null;
+  showDnsForm: boolean;
   usageLogs: UsageLog[];
   usageTotal: number;
   usagePage: number;
@@ -37,6 +44,13 @@ const state: {
   loading: false,
   showSettings: false,
   page: "tools",
+  cloudflareTokenConfigured: false,
+  cloudflareZones: [],
+  selectedZone: null,
+  dnsRecords: [],
+  editingDnsRecord: null,
+  dnsFormDraft: null,
+  showDnsForm: false,
   usageLogs: [],
   usageTotal: 0,
   usagePage: 1,
@@ -74,6 +88,60 @@ function renderToken(token: ApiToken): string {
       <span class="token-group">${escapeHtml(group)}</span>
     </button>
   `;
+}
+
+function renderCloudflareZone(zone: CloudflareZone): string {
+  return `<button class="zone-card panel" type="button" data-zone-id="${escapeHtml(zone.id)}" ${state.loading ? "disabled" : ""}><span class="zone-card-main"><strong>${escapeHtml(zone.name)}</strong><small>${escapeHtml(zone.status)}</small></span><span aria-hidden="true">›</span></button>`;
+}
+
+function recordDisplayName(record: DnsRecord, zone: CloudflareZone): string {
+  if (record.name === zone.name) return "@";
+  const suffix = `.${zone.name}`;
+  return record.name.endsWith(suffix) ? record.name.slice(0, -suffix.length) : record.name;
+}
+
+function dnsRecordContent(record: DnsRecord): string {
+  if (record.recordType === "SRV" && record.data) {
+    const data = record.data;
+    const serviceName = record.name.split(".").slice(0, 2).join(".");
+    return `${serviceName} · ${String(data.target ?? "")} : ${String(data.port ?? "")}`;
+  }
+  if (record.recordType === "CAA" && record.data) {
+    const data = record.data;
+    return `${String(data.flags ?? "0")} ${String(data.tag ?? "")} ${String(data.value ?? "")}`;
+  }
+  return record.content;
+}
+
+function renderDnsRecord(record: DnsRecord): string {
+  const zone = state.selectedZone;
+  const displayName = zone ? recordDisplayName(record, zone) : record.name;
+  return `<article class="dns-record"><div class="dns-record-summary"><span class="dns-type">${escapeHtml(record.recordType)}</span><div class="dns-record-main"><strong>${escapeHtml(displayName)}</strong><small>${escapeHtml(dnsRecordContent(record))}</small></div><div class="dns-record-meta"><span>${record.proxied ? "已代理" : "仅 DNS"}</span><small>TTL ${record.ttl === 1 ? "自动" : `${record.ttl}s`}${record.priority == null ? "" : ` · 优先级 ${record.priority}`}</small></div></div><div class="dns-record-actions"><button class="secondary-button" type="button" data-edit-record="${escapeHtml(record.id)}" ${state.loading ? "disabled" : ""}>编辑</button><button class="secondary-button danger-button" type="button" data-delete-record="${escapeHtml(record.id)}" ${state.loading ? "disabled" : ""}>删除</button></div></article>`;
+}
+
+function renderDnsEditor(): string {
+  const editing = state.editingDnsRecord;
+  const zone = state.selectedZone;
+  if (!zone) return "";
+  const data = editing?.data ?? {};
+  const draft = state.dnsFormDraft;
+  const selectedType = draft?.recordType ?? editing?.recordType ?? "A";
+  const textField = (name: string, label: string, value: string, placeholder = "") => `<label><span>${label}</span><input name="${name}" value="${escapeHtml(draft?.[name] ?? value)}" placeholder="${escapeHtml(placeholder)}" /></label>`;
+  return `<form id="dns-record-form" class="panel dns-editor">
+    <div class="panel-heading"><h2>${editing ? "编辑 DNS 记录" : "新增 DNS 记录"}</h2><button class="secondary-button" type="button" id="cancel-dns-edit">取消</button></div>
+    <div class="dns-form-grid">
+      <label><span>记录类型</span><select name="recordType" ${editing ? "disabled" : ""}>${["A", "AAAA", "CNAME", "TXT", "MX", "NS", "SRV", "CAA"].map((type) => `<option value="${type}" ${selectedType === type ? "selected" : ""}>${type}</option>`).join("")}</select></label>
+      ${textField("name", "名称", editing ? recordDisplayName(editing, zone) : "@", "@ 或 www")}
+      ${textField("content", "内容 / 目标", editing && !["SRV", "CAA"].includes(editing.recordType) ? editing.content : "", "IP 地址、目标域名或文本")}
+      <label><span>TTL（秒）</span><select name="ttl">${draft?.ttl && !["1", "60", "120", "300", "600", "1800", "3600", "86400"].includes(draft.ttl) ? `<option value="${escapeHtml(draft.ttl)}" selected>当前值 ${escapeHtml(draft.ttl)} 秒</option>` : editing && ![1, 60, 120, 300, 600, 1800, 3600, 86400].includes(editing.ttl) ? `<option value="${editing.ttl}" selected>当前值 ${editing.ttl} 秒</option>` : ""}${[[1, "自动"], [60, "60 秒"], [120, "120 秒"], [300, "5 分钟"], [600, "10 分钟"], [1800, "30 分钟"], [3600, "1 小时"], [86400, "24 小时"]].map(([value, label]) => `<option value="${value}" ${Number(draft?.ttl ?? editing?.ttl ?? 1) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      <label class="dns-field-proxy"><span>Cloudflare 代理</span><select name="proxied"><option value="false" ${(draft?.proxied ?? String(editing?.proxied ?? false)) === "false" ? "selected" : ""}>仅 DNS</option><option value="true" ${(draft?.proxied ?? String(editing?.proxied ?? false)) === "true" ? "selected" : ""}>已代理</option></select></label>
+      <label class="dns-field-priority" hidden><span>MX 优先级</span><input name="priority" type="number" min="0" max="65535" value="${escapeHtml(draft?.priority ?? String(editing?.priority ?? 10))}" /></label>
+      <div class="dns-field-srv dns-form-grid" hidden>${textField("target", "SRV 目标", String(data.target ?? ""), "server.example.com")}<label><span>优先级</span><input name="srvPriority" type="number" min="0" max="65535" value="${escapeHtml(draft?.srvPriority ?? String(data.priority ?? 10))}" /></label><label><span>权重</span><input name="weight" type="number" min="0" max="65535" value="${escapeHtml(draft?.weight ?? String(data.weight ?? 0))}" /></label><label><span>端口</span><input name="port" type="number" min="0" max="65535" value="${escapeHtml(draft?.port ?? String(data.port ?? 443))}" /></label></div>
+      <div class="dns-field-caa dns-form-grid" hidden><label><span>Flags</span><input name="flags" type="number" min="0" max="255" value="${escapeHtml(draft?.flags ?? String(data.flags ?? 0))}" /></label><label><span>Tag</span><select name="caaTag">${["issue", "issuewild", "iodef"].map((tag) => `<option value="${tag}" ${(draft?.caaTag ?? String(data.tag ?? "issue")) === tag ? "selected" : ""}>${tag}</option>`).join("")}</select></label>${textField("caaValue", "值", String(data.value ?? ""), "ca.example.com")}</div>
+    </div>
+    <p class="dns-field-content dns-form-help">名称可填写 @、子域名或当前域名内的完整名称。SRV 名称格式为 _sip._tcp。</p>
+    <div class="shortcut-setting-actions"><button class="primary-button" type="submit" ${state.loading ? "disabled" : ""}>${state.loading ? "保存中..." : "保存记录"}</button></div>
+  </form>`;
 }
 
 function renderUsageLog(log: UsageLog): string {
@@ -135,6 +203,7 @@ function render(): void {
             <div class="window-menu-items">
               <button data-page="home" type="button">令牌管理</button>
               <button data-page="logs" type="button">使用日志</button>
+              <button data-page="domains" type="button">域名管理</button>
               <button data-page="settings" type="button">设置</button>
               <button data-page="tools" type="button">工具集</button>
             </div>
@@ -145,7 +214,7 @@ function render(): void {
 
       <main class="content">
         ${state.page === "tools" ? `
-          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button></div></section>
+          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="domains" type="button">Cloudflare DNS</button><button class="secondary-button" data-page="home" type="button">返回管理</button></div></section>
           <section class="intro"><div><p class="eyebrow">DeskTool 工具集</p><h1>工具集</h1><p class="intro-copy">快捷启动常用桌面工具。</p></div></section>
           ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
           <section class="panel tools-panel">
@@ -159,6 +228,11 @@ function render(): void {
             <div class="translation-tool-status"><span>${languageOptions.find(([value]) => value === state.translationSettings.targetLanguage)?.[1] ?? "简体中文"}</span><span>${state.translationSettings.consent ? "已授权文字上传" : "待确认文字上传"}</span></div>
             <div class="shortcut-setting-actions"><button id="translation-screenshot" class="primary-button icon-command" type="button" ${supportsRegionScreenshot && !state.loading ? "" : "disabled"}>${icon("scan-text")}截图</button><button class="secondary-button icon-command" data-page="settings" type="button">${icon("settings-2")}配置</button></div>
           </section>
+          <section class="translation-tool cloudflare-tool">
+            <div class="panel-heading"><h2>Cloudflare DNS</h2><span class="translation-channel">${state.cloudflareTokenConfigured ? "Token 已配置" : "尚未配置"}</span></div>
+            <p class="intro-copy">查看 Cloudflare 域名并管理 DNS 解析记录。</p>
+            <button class="primary-button" data-page="domains" type="button">打开域名管理</button>
+          </section>
         ` : state.page === "home" ? `
         <section class="compact-toolbar" aria-label="紧凑模式操作">
           <label for="compact-token">API 令牌</label>
@@ -168,6 +242,7 @@ function render(): void {
           </select>
           <div class="compact-actions">
             <button class="secondary-button" data-page="logs" type="button">日志</button>
+            <button class="secondary-button" data-page="domains" type="button">域名</button>
             <button class="secondary-button" data-page="settings" type="button">设置</button>
             <button class="secondary-button" data-page="tools" type="button">工具</button>
             <button class="secondary-button" id="compact-sync" type="button" ${state.loading ? "disabled" : ""}>${state.loading ? "处理中..." : "同步"}</button>
@@ -239,7 +314,7 @@ function render(): void {
           </div>
         </section>
         ` : state.page === "logs" ? `
-          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button><button class="secondary-button" data-page="settings" type="button">设置</button></div></section>
+          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button><button class="secondary-button" data-page="domains" type="button">域名</button><button class="secondary-button" data-page="settings" type="button">设置</button></div></section>
           <section class="intro">
             <div><p class="eyebrow">NewAPI 使用记录</p><h1>使用日志</h1><p class="intro-copy">显示服务器记录的消费用量，不包含令牌密钥和请求内容。</p></div>
             <button class="secondary-button" id="refresh-logs" type="button" ${state.loading ? "disabled" : ""}>${state.loading ? "加载中..." : "刷新"}</button>
@@ -251,9 +326,19 @@ function render(): void {
             </tbody></table></div>
             <div class="log-pagination"><span>共 ${state.usageTotal} 条 · 第 ${state.usagePage} 页</span><div><button class="secondary-button" id="logs-prev" type="button" ${state.loading || state.usagePage <= 1 ? "disabled" : ""}>上一页</button><button class="secondary-button" id="logs-next" type="button" ${state.loading || state.usagePage * 50 >= state.usageTotal ? "disabled" : ""}>下一页</button></div></div>
           </section>
+        ` : state.page === "domains" ? `
+          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="tools" type="button">工具</button>${state.selectedZone ? '<button class="secondary-button cloudflare-back-zones" type="button">返回域名</button>' : ""}<button class="secondary-button cloudflare-refresh" type="button" ${state.loading ? "disabled" : ""}>刷新</button>${state.selectedZone ? '<button class="primary-button cloudflare-add-record" type="button">新增记录</button>' : ""}<button class="secondary-button" data-page="settings" type="button">设置</button></div></section>
+          <section class="intro"><div><p class="eyebrow">Cloudflare</p><h1>${state.selectedZone ? escapeHtml(state.selectedZone.name) : "域名管理"}</h1><p class="intro-copy">${state.selectedZone ? "管理此域名的 DNS 解析记录。" : "查看当前 API Token 可访问的 Cloudflare 域名。"}</p></div><div class="dns-page-actions">${state.selectedZone ? '<button class="secondary-button cloudflare-back-zones" type="button">返回域名</button>' : ""}<button class="secondary-button cloudflare-refresh" type="button" ${state.loading ? "disabled" : ""}>${state.loading ? "读取中..." : "刷新"}</button>${state.selectedZone ? '<button class="primary-button cloudflare-add-record" type="button">新增记录</button>' : ""}</div></section>
+          ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
+          ${!state.cloudflareTokenConfigured ? '<section class="panel cloudflare-empty"><h2>尚未配置 API Token</h2><p class="intro-copy">请先在设置页面添加 Cloudflare API Token，并授予 Zone:Read 与 DNS:Edit 权限。</p><button class="primary-button" data-page="settings" type="button">前往设置</button></section>' : state.selectedZone ? `
+            ${state.showDnsForm ? renderDnsEditor() : ""}
+            <section class="panel dns-record-list"><div class="panel-heading compact"><div><p class="section-kicker">DNS 解析</p><h2>记录 <span class="count">${state.dnsRecords.length}</span></h2></div><span class="muted">仅在 Cloudflare API 更新成功后刷新</span></div>
+              ${state.dnsRecords.length ? state.dnsRecords.map(renderDnsRecord).join("") : `<div class="empty-state">${state.loading ? "正在读取 DNS 记录..." : "此域名暂无 DNS 记录。"}</div>`}
+            </section>
+          ` : `<section class="zone-grid">${state.cloudflareZones.length ? state.cloudflareZones.map(renderCloudflareZone).join("") : `<div class="panel empty-state">${state.loading ? "正在读取域名..." : "没有找到可访问的域名。请检查 Token 的 Zone:Read 权限。"}</div>`}</section>`}
         ` : `
-          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button><button class="secondary-button" data-page="logs" type="button">日志</button></div></section>
-          <section class="intro"><div><p class="eyebrow">偏好设置</p><h1>设置</h1><p class="intro-copy">调整窗口行为和截图快捷键。</p></div></section>
+          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button><button class="secondary-button" data-page="logs" type="button">日志</button><button class="secondary-button" data-page="domains" type="button">域名</button></div></section>
+          <section class="intro"><div><p class="eyebrow">偏好设置</p><h1>设置</h1><p class="intro-copy">调整窗口行为和截图快捷键。</p></div><button class="secondary-button" data-page="domains" type="button">Cloudflare 域名管理</button></section>
           ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
           <section class="panel settings-panel">
             <p class="section-kicker">窗口行为</p><h2>关闭按钮</h2>
@@ -271,6 +356,14 @@ function render(): void {
                 <button class="primary-button" type="submit" ${!supportsRegionScreenshot || state.loading ? "disabled" : ""}>保存快捷键</button>
                 <button class="secondary-button" id="reset-screenshot-shortcut" type="button" ${!supportsRegionScreenshot || state.loading ? "disabled" : ""}>恢复默认</button>
               </div>
+            </form>
+          </section>
+          <section class="panel settings-panel cloudflare-settings">
+            <p class="section-kicker">Cloudflare DNS</p><h2>API Token</h2>
+            <form id="cloudflare-token-form" class="translation-form">
+              <label><span>Cloudflare API Token</span><input name="cloudflareToken" type="password" autocomplete="off" placeholder="${state.cloudflareTokenConfigured ? "已配置，输入新 Token 可替换" : "粘贴 Cloudflare API Token"}" ${state.loading ? "disabled" : ""}/></label>
+              <p class="translation-security-note">Token 仅存储在系统密钥环中，不会返回前端。建议仅授予 Zone:Read 与 DNS:Edit 权限。保存时会先验证 Token。</p>
+              <div class="shortcut-setting-actions"><button class="primary-button" type="submit" ${state.loading ? "disabled" : ""}>验证并保存 Token</button><button class="secondary-button" id="clear-cloudflare-token" type="button" ${state.loading || !state.cloudflareTokenConfigured ? "disabled" : ""}>清除 Token</button><button class="secondary-button" data-page="domains" type="button">域名管理</button></div>
             </form>
           </section>
           <section class="translation-settings-panel">
@@ -412,6 +505,7 @@ function bindEvents(): void {
       if (menu) menu.open = false;
       const page = button.dataset.page;
       if (page === "logs") void openUsageLogs(1);
+      else if (page === "domains") void openCloudflareDomains();
       else if (page === "settings") {
         state.page = "settings";
         state.notice = null;
@@ -428,6 +522,63 @@ function bindEvents(): void {
     });
   });
   document.querySelector<HTMLButtonElement>("#refresh-logs")?.addEventListener("click", () => void openUsageLogs(state.usagePage));
+  document.querySelector<HTMLFormElement>("#cloudflare-token-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveCloudflareToken(event.currentTarget as HTMLFormElement);
+  });
+  document.querySelector<HTMLButtonElement>("#clear-cloudflare-token")?.addEventListener("click", () => void clearCloudflareToken());
+  document.querySelectorAll<HTMLButtonElement>(".cloudflare-refresh").forEach((button) => button.addEventListener("click", () => {
+    if (state.selectedZone) void openDnsRecords(state.selectedZone);
+    else void openCloudflareDomains();
+  }));
+  document.querySelectorAll<HTMLButtonElement>(".cloudflare-back-zones").forEach((button) => button.addEventListener("click", () => {
+    state.selectedZone = null;
+    state.dnsRecords = [];
+    state.dnsFormDraft = null;
+    state.showDnsForm = false;
+    render();
+  }));
+  document.querySelectorAll<HTMLButtonElement>(".cloudflare-add-record").forEach((button) => button.addEventListener("click", () => {
+    state.editingDnsRecord = null;
+    state.dnsFormDraft = null;
+    state.showDnsForm = true;
+    render();
+  }));
+  document.querySelectorAll<HTMLButtonElement>("[data-zone-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const zone = state.cloudflareZones.find((item) => item.id === button.dataset.zoneId);
+      if (zone) void openDnsRecords(zone);
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-edit-record]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const record = state.dnsRecords.find((item) => item.id === button.dataset.editRecord);
+      if (!record) return;
+      state.editingDnsRecord = record;
+      state.dnsFormDraft = null;
+      state.showDnsForm = true;
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-delete-record]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const record = state.dnsRecords.find((item) => item.id === button.dataset.deleteRecord);
+      if (record && window.confirm(`确定删除 ${record.recordType} 记录 ${record.name}？`)) void removeDnsRecord(record);
+    });
+  });
+  document.querySelector<HTMLButtonElement>("#cancel-dns-edit")?.addEventListener("click", () => {
+    state.showDnsForm = false;
+    state.editingDnsRecord = null;
+    state.dnsFormDraft = null;
+    render();
+  });
+  document.querySelector<HTMLFormElement>("#dns-record-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveDnsRecord(event.currentTarget as HTMLFormElement);
+  });
+  document.querySelector<HTMLSelectElement>('#dns-record-form select[name="recordType"]')?.addEventListener("change", (event) => updateDnsFormFields((event.currentTarget as HTMLSelectElement).value));
+  document.querySelector<HTMLSelectElement>('#dns-record-form select[name="proxied"]')?.addEventListener("change", () => updateDnsFormFields(document.querySelector<HTMLSelectElement>('#dns-record-form select[name="recordType"]')?.value ?? "A"));
+  if (state.showDnsForm) updateDnsFormFields(state.dnsFormDraft?.recordType ?? state.editingDnsRecord?.recordType ?? "A");
   document.querySelector<HTMLButtonElement>("#translation-screenshot")?.addEventListener("click", () => {
     if (!state.translationSettings.consent || state.translationSettings.provider === "openai" && !state.translationSettings.apiKeyConfigured) {
       state.page = "settings";
@@ -471,6 +622,217 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("#sync")?.addEventListener("click", sync);
   document.querySelector<HTMLButtonElement>("#update-group")?.addEventListener("click", updateGroup);
   document.querySelector<HTMLFormElement>("#connection-form")?.addEventListener("submit", saveConnection);
+}
+
+async function openCloudflareDomains(): Promise<void> {
+  if (state.loading) return;
+  state.page = "domains";
+  state.selectedZone = null;
+  state.dnsRecords = [];
+  state.showDnsForm = false;
+  state.editingDnsRecord = null;
+  state.dnsFormDraft = null;
+  state.notice = null;
+  if (!state.cloudflareTokenConfigured) { render(); return; }
+  state.loading = true;
+  render();
+  try {
+    state.cloudflareZones = await appApi.listCloudflareZones();
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "读取 Cloudflare 域名失败。") };
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+async function openDnsRecords(zone: CloudflareZone): Promise<void> {
+  if (state.loading) return;
+  if (state.selectedZone?.id !== zone.id) state.dnsRecords = [];
+  state.page = "domains";
+  state.selectedZone = zone;
+  state.showDnsForm = false;
+  state.editingDnsRecord = null;
+  state.dnsFormDraft = null;
+  state.loading = true;
+  state.notice = null;
+  render();
+  try {
+    state.dnsRecords = await appApi.listDnsRecords(zone.id);
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "读取 DNS 记录失败，现有列表未改变。") };
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+async function saveCloudflareToken(form: HTMLFormElement): Promise<void> {
+  if (state.loading) return;
+  const token = String(new FormData(form).get("cloudflareToken") ?? "");
+  if (!token.trim()) { setNotice("error", "请输入 Cloudflare API Token。"); return; }
+  state.loading = true;
+  state.notice = null;
+  render();
+  try {
+    await appApi.saveCloudflareToken(token);
+    state.cloudflareTokenConfigured = true;
+    try {
+      state.cloudflareZones = await appApi.listCloudflareZones();
+    } catch (error) {
+      state.notice = { type: "info", text: `Token 已验证并安全保存，但域名列表刷新失败：${getErrorMessage(error, "请稍后重试。")}` };
+      return;
+    }
+    state.notice = { type: "success", text: "Cloudflare API Token 已验证并安全保存。" };
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "Token 验证或保存失败，原配置未改变。") };
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+async function clearCloudflareToken(): Promise<void> {
+  if (state.loading) return;
+  state.loading = true;
+  state.notice = null;
+  render();
+  try {
+    await appApi.clearCloudflareToken();
+    state.cloudflareTokenConfigured = false;
+    state.cloudflareZones = [];
+    state.selectedZone = null;
+    state.dnsRecords = [];
+    state.showDnsForm = false;
+    state.dnsFormDraft = null;
+    state.notice = { type: "success", text: "Cloudflare API Token 已清除。" };
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "清除 Token 失败。") };
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+function updateDnsFormFields(recordType: string): void {
+  const form = document.querySelector<HTMLFormElement>("#dns-record-form");
+  if (!form) return;
+  const is = (type: string) => type === recordType;
+  const priority = form.querySelector<HTMLElement>(".dns-field-priority");
+  const srv = form.querySelector<HTMLElement>(".dns-field-srv");
+  const caa = form.querySelector<HTMLElement>(".dns-field-caa");
+  const proxy = form.querySelector<HTMLElement>(".dns-field-proxy");
+  const content = form.querySelector<HTMLInputElement>('input[name="content"]');
+  if (priority) {
+    priority.hidden = !is("MX");
+    priority.querySelectorAll<HTMLInputElement>("input").forEach((input) => { input.disabled = !is("MX"); input.required = is("MX"); });
+  }
+  if (srv) {
+    srv.hidden = !is("SRV");
+    srv.querySelectorAll<HTMLInputElement>("input").forEach((input) => { input.disabled = !is("SRV"); input.required = is("SRV"); });
+  }
+  if (caa) {
+    caa.hidden = !is("CAA");
+    caa.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select").forEach((input) => { input.disabled = !is("CAA"); input.required = is("CAA") && input.name !== "flags"; });
+  }
+  if (proxy) {
+    const supportsProxy = ["A", "AAAA", "CNAME"].includes(recordType);
+    proxy.hidden = !supportsProxy;
+    proxy.querySelectorAll<HTMLSelectElement>("select").forEach((select) => { select.disabled = !supportsProxy; });
+  }
+  if (content) {
+    const structured = ["SRV", "CAA"].includes(recordType);
+    content.closest("label")!.hidden = structured;
+    content.required = !structured;
+  }
+  const ttl = form.querySelector<HTMLSelectElement>('select[name="ttl"]');
+  const proxiedValue = form.querySelector<HTMLSelectElement>('select[name="proxied"]')?.value === "true";
+  if (ttl) {
+    const proxiedDns = proxiedValue && ["A", "AAAA", "CNAME"].includes(recordType);
+    if (proxiedDns) ttl.value = "1";
+    ttl.disabled = proxiedDns;
+  }
+}
+
+async function saveDnsRecord(form: HTMLFormElement): Promise<void> {
+  if (state.loading || !state.selectedZone) return;
+  const selectedZone = state.selectedZone;
+  const formData = new FormData(form);
+  const recordType = state.editingDnsRecord?.recordType ?? String(formData.get("recordType") ?? "A");
+  let data: Record<string, unknown> | null = null;
+  if (recordType === "SRV") {
+    data = {
+      target: String(formData.get("target") ?? "").trim(),
+      priority: Number(formData.get("srvPriority")),
+      weight: Number(formData.get("weight")),
+      port: Number(formData.get("port")),
+    };
+  } else if (recordType === "CAA") {
+    data = { flags: Number(formData.get("flags")), tag: String(formData.get("caaTag")), value: String(formData.get("caaValue") ?? "").trim() };
+  }
+  state.dnsFormDraft = Object.fromEntries(Array.from(formData.entries(), ([key, value]) => [key, String(value)] as const));
+  const input: DnsRecordInput = {
+    zoneId: state.selectedZone.id,
+    zoneName: state.selectedZone.name,
+    recordId: state.editingDnsRecord?.id ?? null,
+    recordType,
+    name: String(formData.get("name") ?? "").trim(),
+    content: recordType === "TXT" ? String(formData.get("content") ?? "") : String(formData.get("content") ?? "").trim(),
+    ttl: formData.get("proxied") === "true" && ["A", "AAAA", "CNAME"].includes(recordType) ? 1 : Number(formData.get("ttl")),
+    proxied: formData.get("proxied") === "true",
+    priority: recordType === "MX" ? Number(formData.get("priority")) : null,
+    data,
+  };
+  state.loading = true;
+  state.notice = null;
+  render();
+  let saved = false;
+  try {
+    await appApi.saveDnsRecord(input);
+    saved = true;
+    state.showDnsForm = false;
+    state.editingDnsRecord = null;
+    state.dnsFormDraft = null;
+    state.notice = { type: "success", text: "DNS 记录已更新。正在重新读取服务端记录..." };
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "保存 DNS 记录失败，服务端列表未更新。") };
+    state.showDnsForm = true;
+  }
+  if (saved && state.page === "domains" && state.selectedZone?.id === selectedZone.id) {
+    try {
+      state.dnsRecords = await appApi.listDnsRecords(selectedZone.id);
+      state.notice = { type: "success", text: "DNS 记录已更新。" };
+    } catch (error) {
+      state.notice = { type: "info", text: `DNS 记录已保存，但刷新列表失败：${getErrorMessage(error, "请稍后手动刷新。")}` };
+    }
+  }
+  state.loading = false;
+  render();
+}
+
+async function removeDnsRecord(record: DnsRecord): Promise<void> {
+  if (state.loading || !state.selectedZone) return;
+  const selectedZone = state.selectedZone;
+  state.loading = true;
+  state.notice = null;
+  render();
+  let deleted = false;
+  try {
+    await appApi.deleteDnsRecord(selectedZone.id, record.id);
+    deleted = true;
+  } catch (error) {
+    state.notice = { type: "error", text: getErrorMessage(error, "删除 DNS 记录失败，原列表未改变。") };
+  }
+  if (deleted && state.page === "domains" && state.selectedZone?.id === selectedZone.id) {
+    try {
+      state.dnsRecords = await appApi.listDnsRecords(selectedZone.id);
+      state.notice = { type: "success", text: "DNS 记录已删除。" };
+    } catch (error) {
+      state.notice = { type: "info", text: `DNS 记录已删除，但刷新列表失败：${getErrorMessage(error, "请稍后手动刷新。")}` };
+    }
+  }
+  state.loading = false;
+  render();
 }
 
 async function openUsageLogs(page: number): Promise<void> {
@@ -642,6 +1004,7 @@ async function init(): Promise<void> {
   try {
     state.snapshot = await appApi.getSnapshot();
     state.translationSettings = await appApi.getTranslationSettings();
+    state.cloudflareTokenConfigured = await appApi.getCloudflareTokenConfigured();
     if (supportsRegionScreenshot) state.shortcutWarning = await appApi.getScreenshotShortcutWarning();
   } catch (error) {
     state.notice = { type: "error", text: getErrorMessage(error, "读取本地数据失败。") };

@@ -2,14 +2,48 @@
 
 ## 当前阶段
 
-- 阶段：阶段 25，本地 OCR 图片翻译
-- 状态：已完成（静态审阅，待 Windows 实机验收）
+- 阶段：阶段 26，Cloudflare DNS 管理
+- 状态：已完成（静态审阅，待实机验收）
 - 开始时间：本次会话
 - 完成时间：本次会话
 - 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 本阶段目标：截图选区与现有贴图支持本地英文/简中 OCR、原位置译文覆盖及原文译文复制。
-- 本阶段范围：独立安全配置、OpenAI/Google Free 渠道、OCR 内嵌资源、任务取消、贴图文字交互。
-- 下一阶段：静态审阅完成后，在 Windows 验证 OCR、DPI、网络渠道与单文件 EXE 资源。
+- 本阶段目标：设置页配置单个 Cloudflare API Token；查看该 Token 可访问的 Zone 并管理 DNS 记录。
+- 本阶段范围：系统密钥环凭证保存、Cloudflare API 后端、域名列表、常见记录的新增/编辑/删除。
+- 下一阶段：静态审阅完成后，在 Windows 桌面环境验证 Cloudflare Token 权限、DNS CRUD 和错误/刷新交互。
+
+### 阶段 26：Cloudflare DNS 管理
+
+状态：已完成（静态审阅，待实机验收）
+
+已完成行为：
+
+- 设置页新增独立 Cloudflare API Token 配置，可验证并保存、替换或清除。Token 单独使用系统密钥环 `cloudflare-token` 项，不与 NewAPI、翻译 Key 共用；前端仅获得 configured 标志，不读取凭证值。
+- 域名管理入口加入工具集和导航。域名列表通过 Cloudflare `/zones` 分页读取当前 Token 有权访问的 Zone；进入 Zone 后分页读取 DNS 记录。
+- 支持 A、AAAA、CNAME、TXT、MX、NS、SRV、CAA 记录的查看、新增、编辑（类型保持不变）与删除；记录名称限制在当前 Zone，表单包含代理、TTL、MX 优先级、SRV/CAA 结构字段。危险删除需二次确认。
+- Rust command 只允许主窗口调用；固定 HTTPS Cloudflare API origin，使用 Bearer Token，禁止重定向，设置请求超时与 4 MiB 响应限制。错误不透传第三方响应、Token 或底层网络内容。
+- DNS 更新/删除服务端成功后再刷新记录列表；修改失败保留原列表并给出通用错误，修改成功但刷新失败则提示已保存并允许手动刷新。
+- 校验 Zone/记录标识、记录类型、域名范围、IP/目标、TTL、TXT/CAA 内容和 SRV/MX 数值；添加 Rust 后端权限边界，防止前端传入任意 Zone 标识。
+
+本阶段修改文件：
+
+- `AGENTS.md`、`IMPLEMENTATION_STATUS.md`
+- `src-tauri/Cargo.toml`、`src-tauri/src/cloudflare.rs`（新增）、`src-tauri/src/error.rs`、`src-tauri/src/lib.rs`、`src-tauri/src/models.rs`、`src-tauri/src/storage.rs`
+- `src/api.ts`、`src/domain.ts`、`src/main.ts`、`src/styles.css`
+
+静态审阅结果：
+
+- 核对 Cloudflare 官方 API Zone 列表及 DNS CRUD 路由、Bearer Token 认证、DNS Write / Zone Read 权限、SRV/CAA data 字段及 PATCH 更新操作。
+- 人工检查 Tauri command 注册（Windows/non-Windows）、调用窗口校验、密钥环数据隔离、前后端 camelCase 字段、HTML 转义和记录表单协议。
+- 检查 DNS 记录输入范围和 zone 归属验证；确认请求仅由 Rust 后端发往固定 origin，不将 Token 放到前端状态、普通快照、日志或错误信息。
+- `git diff --check` 通过；未执行 TypeScript/Rust 自动检查。
+- 未执行构建、测试、开发服务器或运行验证，遵守工作边界。
+
+未决事项与限制：
+
+- Cloudflare API Token 建议具备 Zone:Read 和 DNS:Edit 权限；若使用者 Token 权限范围不匹配，Zone 列表或修改会被拒绝。
+- 首版表单只编辑常见八种 DNS 类型；其它类型仍能查看/删除，编辑按钮禁用。
+- 代理打开时 TTL 由 Cloudflare 要求为 Auto，表单随之设置 TTL=1。
+- Windows 实机需验证系统密钥环、不同 Cloudflare 帐户/权限范围、分页、DNS 记录实际响应结构、代理/TTL 行为和失败刷新交互。
 
 ### 阶段 25：本地 OCR 图片翻译
 

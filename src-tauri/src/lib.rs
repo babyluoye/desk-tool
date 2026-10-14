@@ -1,4 +1,5 @@
 mod error;
+mod cloudflare;
 mod models;
 mod newapi;
 mod storage;
@@ -17,7 +18,7 @@ mod screenshot_shortcut;
 use chrono::Utc;
 use error::AppError;
 use models::{
-    AppSnapshot, ConnectionConfig, GetUsageLogsInput, SaveConnectionInput, SyncResult,
+    AppSnapshot, CloudflareZone, ConnectionConfig, DnsRecord, DnsRecordInput, GetUsageLogsInput, SaveConnectionInput, SyncResult,
     UpdateTokenGroupInput, UsageLogPage,
 };
 use newapi::NewApiClient;
@@ -249,6 +250,64 @@ fn require_window(window: &tauri::WebviewWindow, label: &str) -> Result<(), AppE
 }
 
 #[tauri::command]
+fn get_cloudflare_token_configured(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<bool, AppError> {
+    require_window(&window, "main")?;
+    Ok(state.store.load_cloudflare_token()?.is_some())
+}
+
+#[tauri::command]
+async fn save_cloudflare_token(window: tauri::WebviewWindow, state: State<'_, AppState>, token: String) -> Result<bool, AppError> {
+    require_window(&window, "main")?;
+    let token = token.trim().to_string();
+    let client = cloudflare::CloudflareClient::new(&token)?;
+    client.fetch_zones().await?;
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.save_cloudflare_token(&token))
+        .await.map_err(|_| AppError::Cloudflare("保存 Cloudflare API Token 失败。".into()))??;
+    Ok(true)
+}
+
+#[tauri::command]
+fn clear_cloudflare_token(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), AppError> {
+    require_window(&window, "main")?;
+    state.store.clear_cloudflare_token()
+}
+
+#[tauri::command]
+async fn list_cloudflare_zones(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Vec<CloudflareZone>, AppError> {
+    require_window(&window, "main")?;
+    cloudflare::load_client(&state.store)?.fetch_zones().await
+}
+
+#[tauri::command]
+async fn list_dns_records(window: tauri::WebviewWindow, state: State<'_, AppState>, zone_id: String) -> Result<Vec<DnsRecord>, AppError> {
+    require_window(&window, "main")?;
+    let client = cloudflare::load_client(&state.store)?;
+    if !client.fetch_zones().await?.iter().any(|zone| zone.id == zone_id) {
+        return Err(AppError::Validation("所选 Cloudflare 域名无效或已无访问权限。".into()));
+    }
+    client.fetch_records(&zone_id).await
+}
+
+#[tauri::command]
+async fn save_dns_record(window: tauri::WebviewWindow, state: State<'_, AppState>, input: DnsRecordInput) -> Result<(), AppError> {
+    require_window(&window, "main")?;
+    let client = cloudflare::load_client(&state.store)?;
+    client.validate_zone(&input.zone_id, &input.zone_name).await?;
+    client.save_record(input).await
+}
+
+#[tauri::command]
+async fn delete_dns_record(window: tauri::WebviewWindow, state: State<'_, AppState>, zone_id: String, record_id: String) -> Result<(), AppError> {
+    require_window(&window, "main")?;
+    let client = cloudflare::load_client(&state.store)?;
+    if !client.fetch_zones().await?.iter().any(|zone| zone.id == zone_id) {
+        return Err(AppError::Validation("所选 Cloudflare 域名无效或已无访问权限。".into()));
+    }
+    client.delete_record(&zone_id, &record_id).await
+}
+
+#[tauri::command]
 fn get_snapshot(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<AppSnapshot, AppError> {
     require_window(&window, "main")?;
     state.store.load_snapshot()
@@ -418,6 +477,13 @@ macro_rules! app_handlers {
         tauri::generate_handler![
             get_snapshot,
             save_connection,
+            get_cloudflare_token_configured,
+            save_cloudflare_token,
+            clear_cloudflare_token,
+            list_cloudflare_zones,
+            list_dns_records,
+            save_dns_record,
+            delete_dns_record,
             get_translation_settings,
             save_translation_settings,
             start_screenshot,
@@ -453,6 +519,13 @@ macro_rules! app_handlers {
         tauri::generate_handler![
             get_snapshot,
             save_connection,
+            get_cloudflare_token_configured,
+            save_cloudflare_token,
+            clear_cloudflare_token,
+            list_cloudflare_zones,
+            list_dns_records,
+            save_dns_record,
+            delete_dns_record,
             get_translation_settings,
             save_translation_settings,
             sync_from_newapi,

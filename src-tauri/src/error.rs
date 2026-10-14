@@ -15,6 +15,8 @@ pub enum AppError {
     Screenshot(String),
     #[error("{0}")]
     Translation(String),
+    #[error("{0}")]
+    Cloudflare(String),
 }
 
 impl Serialize for AppError {

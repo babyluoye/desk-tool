@@ -51,6 +51,26 @@ impl SecureStore {
             .map_err(|error| AppError::Storage(format!("连接配置安全保存失败：{error}")))
     }
 
+    pub fn load_cloudflare_token(&self) -> Result<Option<String>, AppError> {
+        match self.entry("cloudflare-token")?.get_password() {
+            Ok(token) => Ok(Some(token)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err(AppError::Storage("Cloudflare 安全配置读取失败。".into())),
+        }
+    }
+
+    pub fn save_cloudflare_token(&self, token: &str) -> Result<(), AppError> {
+        self.entry("cloudflare-token")?.set_password(token)
+            .map_err(|_| AppError::Storage("Cloudflare API Token 安全保存失败。".into()))
+    }
+
+    pub fn clear_cloudflare_token(&self) -> Result<(), AppError> {
+        match self.entry("cloudflare-token")?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err(AppError::Storage("Cloudflare 安全配置清除失败。".into())),
+        }
+    }
+
     pub fn load_translation(&self) -> Result<crate::translation::StoredTranslationConfig, AppError> {
         match self.entry("translation-config")?.get_password() {
             Ok(value) => serde_json::from_str(&value)

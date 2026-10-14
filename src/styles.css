@@ -107,7 +107,41 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
 .log-table .empty-state { white-space: normal; }
 .log-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; color: #8693a6; font-size: 11px; }
 .log-pagination > div { display: flex; gap: 8px; }
+.dns-page-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.zone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.zone-card { min-height: 78px; padding: 16px; display: flex; justify-content: space-between; align-items: center; text-align: left; color: #32465e; }
+.zone-card:hover:not(:disabled) { border-color: #a9c9ef; background: #f8fbff; }
+.zone-card-main { min-width: 0; }
+.zone-card-main strong, .zone-card-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-card-main strong { font-size: 14px; }
+.zone-card-main small { margin-top: 6px; color: #8391a5; font-size: 10px; text-transform: capitalize; }
+.cloudflare-empty { max-width: 620px; padding: 22px; }
+.cloudflare-empty h2 { margin-bottom: 10px; }
+.cloudflare-empty .intro-copy { margin-bottom: 16px; }
+.dns-record-list { overflow: hidden; }
+.dns-record { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-top: 1px solid #edf1f6; }
+.dns-record-summary { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.dns-type { flex: 0 0 52px; padding: 5px; border-radius: 5px; color: #42678a; background: #edf3f9; text-align: center; font-size: 10px; font-weight: 700; }
+.dns-record-main { min-width: 0; flex: 1; }
+.dns-record-main strong, .dns-record-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dns-record-main strong { color: #354a63; font-size: 12px; }
+.dns-record-main small { margin-top: 5px; color: #7e8da1; font-size: 10px; }
+.dns-record-meta { flex: 0 0 auto; text-align: right; color: #678574; font-size: 10px; }
+.dns-record-meta small { display: block; margin-top: 5px; color: #8a96a8; }
+.dns-record-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+.dns-record-actions .secondary-button { min-height: 30px; padding: 6px 9px; }
+.danger-button { color: #a34444; background: #fbebeb; }
+.danger-button:hover:not(:disabled) { background: #f7dcdc; }
+.dns-editor { max-width: 760px; margin-bottom: 16px; padding: 16px; }
+.dns-editor > .panel-heading { margin-bottom: 16px; }
+.dns-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dns-form-grid label { min-width: 0; }
+.dns-form-grid input, .dns-form-grid select { background: #fafcff; }
+.dns-form-help { margin: 12px 0; color: #8793a6; font-size: 10px; line-height: 1.5; }
+.dns-editor [hidden] { display: none !important; }
+.dns-editor .shortcut-setting-actions { margin-top: 14px; }
 .settings-panel { max-width: 620px; padding: 20px; }
+.cloudflare-settings { max-width: 620px; }
 .tools-panel { max-width: 620px; padding: 20px; }
 .tools-panel .intro-copy { margin: 16px 0; }
 .tools-panel kbd { padding: 6px 8px; border: 1px solid #dfe6ef; border-radius: 5px; color: #536980; background: #f5f8fc; font: 11px ui-monospace, monospace; white-space: nowrap; }
@@ -118,6 +152,8 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
 .translation-settings-panel h2 { margin-bottom: 16px; }
 .translation-tool { max-width: 620px; padding: 20px 0; margin-top: 20px; border-top: 1px solid #d7dee7; }
 .translation-tool .panel-heading { flex-wrap: wrap; }
+.cloudflare-tool .intro-copy { margin: 10px 0 14px; }
+.cloudflare-settings { margin-top: 20px; }
 .translation-channel { color: #486b62; font-size: 11px; }
 .translation-tool-status { display: flex; flex-wrap: wrap; gap: 12px; color: #708198; font-size: 11px; margin: 12px 0; }
 .icon-command { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -147,6 +183,10 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
   .connection-form { grid-template-columns: minmax(0, 1fr); }
   .connection-form .secondary-button { width: 100%; }
   .workspace { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .dns-page-actions { justify-content: flex-start; }
+  .dns-record { align-items: flex-start; flex-direction: column; }
+  .dns-record-actions { width: 100%; justify-content: flex-end; }
+  .dns-record-meta { display: none; }
   .intro { align-items: start; flex-wrap: wrap; gap: 12px; }
   .token-list, .group-list { min-height: 100px; }
 }
@@ -181,6 +221,12 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
   .log-table th, .log-table td { padding: 8px; }
   .log-pagination { align-items: flex-start; flex-direction: column; padding: 10px; }
   .settings-panel, .tools-panel { padding: 12px; }
+  .dns-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .dns-editor { padding: 12px; }
+  .dns-record { padding: 10px; }
+  .dns-record-summary { gap: 7px; }
+  .dns-type { flex-basis: 42px; }
+  .zone-card { padding: 12px; }
   .tools-panel .panel-heading { flex-wrap: wrap; }
   .tools-panel kbd { font-size: 9px; }
   .setting-option { padding: 10px 4px; }

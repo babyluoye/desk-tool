@@ -15,6 +15,9 @@
 - 贴图翻译支持原位置覆盖、原图切换、文字选择和原文/译文复制；移动模式滚轮缩放，文字选择和文本视图内不触发窗口拖动或滚轮缩放。
 - OCR Worker、WASM 和英文/简中语言资源随应用内嵌，不运行时访问 CDN；资源版本/来源/校验值在 scripts/ocr-assets.json 记录。
 - 主页面管理一个 NewAPI 地址和管理凭证。
+- Cloudflare DNS 是 DeskTool 的独立辅助工具：设置页配置单个 Cloudflare API Token，域名页只展示 Token 可访问的 Zone 并管理 DNS 记录，不创建或删除 Zone。
+- Cloudflare Token 与 NewAPI 管理凭证、API 令牌、图片翻译凭证完全独立，使用单独系统密钥环条目；不得写入普通快照、日志或返回前端。
+- Cloudflare DNS 请求只从 Rust 后端访问固定 Cloudflare API origin；域名/记录列表按需获取，不持久化。DNS 修改成功后才刷新页面列表。
 - 管理凭证与 API 令牌是两类不同的数据，不能混用。
 - API 令牌和分组从 NewAPI 服务端同步。
 - API 令牌需要在本地安全保存。
