@@ -1,15 +1,31 @@
 # Implementation Status
 
-## 当前阶段
+## Current phase
 
-- 阶段：阶段 26，Cloudflare DNS 管理
-- 状态：已完成（静态审阅，待实机验收）
-- 开始时间：本次会话
-- 完成时间：本次会话
-- 约束：只修改当前工作目录；不安装环境；不构建；不启动服务。
-- 本阶段目标：设置页配置单个 Cloudflare API Token；查看该 Token 可访问的 Zone 并管理 DNS 记录。
-- 本阶段范围：系统密钥环凭证保存、Cloudflare API 后端、域名列表、常见记录的新增/编辑/删除。
-- 下一阶段：静态审阅完成后，在 Windows 桌面环境验证 Cloudflare Token 权限、DNS CRUD 和错误/刷新交互。
+- Phase: 28, remove screenshot, pinned-image, OCR, and translation features.
+- Status: implementation and static review completed; desktop acceptance pending.
+- Constraints: modify only this workspace; do not install or configure development tools; do not build, test, or launch services.
+
+### Phase 28: Remove screenshot, pinned-image, OCR, and translation features
+
+- Removed screenshot/capture, annotation, pinned-image, OCR, and image-translation UI, frontend/backend modules and commands, dedicated windows/capabilities, shortcut configuration, Windows-only dependencies, and bundled OCR assets.
+- Legacy snapshots have `screenshotShortcut` removed and are rewritten when loaded. Startup also attempts to remove the obsolete `translation-config` system-keyring entry; failures produce only a generic warning.
+- Preserved NewAPI, Cloudflare DNS, main-window controls, and the system tray. Retained the approved `docs/agents/` setup.
+- Static review covered remaining feature references, command/window/capability registrations, migration behavior, dependencies, Tauri JSON validity, and `git diff --check`.
+- Build, tests, type checks, runtime, and API acceptance were not run, per repository constraints.
+
+Files changed or removed: `AGENTS.md`, `IMPLEMENTATION_STATUS.md`, the relevant `src/` and `src-tauri/` UI/configuration/command files, screenshot/OCR/translation modules, and bundled OCR assets/scripts.
+
+### Phase 27: Engineering skills configuration
+
+Status: completed.
+
+- Configured GitHub Issues for `babyluoye/desk-tool`; commands explicitly select the repository because the checkout also has a Gitea remote. Pull requests are not a triage request surface.
+- Configured and verified the default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`.
+- Configured single-context domain documentation: read root `GLOSSARY.md` and relevant `docs/adr/` files when present; absence does not block work.
+- Added the Agent skills section to `AGENTS.md` and created `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and `docs/agents/domain.md`.
+
+---
 
 ### 阶段 26：Cloudflare DNS 管理
 

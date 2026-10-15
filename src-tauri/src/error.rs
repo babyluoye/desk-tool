@@ -12,10 +12,6 @@ pub enum AppError {
     #[error("{0}")]
     NotConfigured(String),
     #[error("{0}")]
-    Screenshot(String),
-    #[error("{0}")]
-    Translation(String),
-    #[error("{0}")]
     Cloudflare(String),
 }
 

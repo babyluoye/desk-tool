@@ -139,38 +139,14 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
 .dns-form-grid input, .dns-form-grid select { background: #fafcff; }
 .dns-form-help { margin: 12px 0; color: #8793a6; font-size: 10px; line-height: 1.5; }
 .dns-editor [hidden] { display: none !important; }
-.dns-editor .shortcut-setting-actions { margin-top: 14px; }
+.dns-editor .action-buttons { margin-top: 14px; }
 .settings-panel { max-width: 620px; padding: 20px; }
-.cloudflare-settings { max-width: 620px; }
-.tools-panel { max-width: 620px; padding: 20px; }
-.tools-panel .intro-copy { margin: 16px 0; }
-.tools-panel kbd { padding: 6px 8px; border: 1px solid #dfe6ef; border-radius: 5px; color: #536980; background: #f5f8fc; font: 11px ui-monospace, monospace; white-space: nowrap; }
-.settings-panel h2 { margin-bottom: 16px; }
-.shortcut-panel { margin-top: 20px; }
+.cloudflare-settings { max-width: 620px; margin-top: 20px; }
 [hidden] { display: none !important; }
-.translation-settings-panel { max-width: 620px; margin-top: 20px; padding: 20px 0; border-top: 1px solid #d7dee7; }
-.translation-settings-panel h2 { margin-bottom: 16px; }
-.translation-tool { max-width: 620px; padding: 20px 0; margin-top: 20px; border-top: 1px solid #d7dee7; }
-.translation-tool .panel-heading { flex-wrap: wrap; }
-.cloudflare-tool .intro-copy { margin: 10px 0 14px; }
-.cloudflare-settings { margin-top: 20px; }
-.translation-channel { color: #486b62; font-size: 11px; }
-.translation-tool-status { display: flex; flex-wrap: wrap; gap: 12px; color: #708198; font-size: 11px; margin: 12px 0; }
-.icon-command { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.icon-command svg { flex: 0 0 auto; }
-.translation-form { display: grid; gap: 12px; }
-.translation-form label { min-width: 0; }
-.translation-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.translation-consent { border-top: 0; padding: 6px 0; }
-.translation-security-note { margin: 0; font-size: 11px; color: #8793a6; line-height: 1.5; }
-.translation-form input[type="range"] { padding: 0; accent-color: #2385cb; }
-.translation-form .shortcut-setting-actions { align-items: start; }
-.translation-form .shortcut-setting-actions button { white-space: normal; }
-@media (width < 300px) { .translation-fields { grid-template-columns: minmax(0, 1fr); } }
-.shortcut-panel .intro-copy { margin: 10px 0 14px; }
-.shortcut-setting-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.shortcut-warning { margin: 10px 0; color: #9c3333; font-size: 12px; line-height: 1.6; }
-#screenshot-shortcut { cursor: pointer; }
+.cloudflare-token-form { display: grid; gap: 12px; }
+.cloudflare-token-form label { min-width: 0; }
+.security-note { margin: 0; font-size: 11px; color: #8793a6; line-height: 1.5; }
+.action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .setting-option { display: flex; align-items: flex-start; gap: 10px; padding: 14px 10px; border-top: 1px solid #edf1f6; cursor: pointer; }
 .setting-option input { flex: 0 0 16px; width: 16px; height: 16px; margin: 2px 0 0; accent-color: #246ac4; }
 .setting-option strong, .setting-option small { display: block; }
@@ -220,15 +196,13 @@ input:focus, select:focus { border-color: #428be5; box-shadow: 0 0 0 2px #246ac4
   .logs-panel { min-width: 0; }
   .log-table th, .log-table td { padding: 8px; }
   .log-pagination { align-items: flex-start; flex-direction: column; padding: 10px; }
-  .settings-panel, .tools-panel { padding: 12px; }
+  .settings-panel { padding: 12px; }
   .dns-form-grid { grid-template-columns: minmax(0, 1fr); }
   .dns-editor { padding: 12px; }
   .dns-record { padding: 10px; }
   .dns-record-summary { gap: 7px; }
   .dns-type { flex-basis: 42px; }
   .zone-card { padding: 12px; }
-  .tools-panel .panel-heading { flex-wrap: wrap; }
-  .tools-panel kbd { font-size: 9px; }
   .setting-option { padding: 10px 4px; }
   .setting-option > span { min-width: 0; }
   .setting-option small { font-size: 10px; }

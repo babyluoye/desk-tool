@@ -18,8 +18,19 @@ pub struct SecureStore;
 impl SecureStore {
     pub fn load_snapshot(&self) -> Result<AppSnapshot, AppError> {
         match self.entry(SNAPSHOT_KEY)?.get_password() {
-            Ok(value) => serde_json::from_str(&value)
-                .map_err(|_| AppError::Storage("本地令牌数据格式无效。".to_string())),
+            Ok(value) => {
+                let mut value: serde_json::Value = serde_json::from_str(&value)
+                    .map_err(|_| AppError::Storage("本地令牌数据格式无效。".to_string()))?;
+                let had_removed_field = value.as_object_mut()
+                    .and_then(|object| object.remove("screenshotShortcut"))
+                    .is_some();
+                let snapshot: AppSnapshot = serde_json::from_value(value)
+                    .map_err(|_| AppError::Storage("本地令牌数据格式无效。".to_string()))?;
+                if had_removed_field {
+                    self.save_snapshot(&snapshot)?;
+                }
+                Ok(snapshot)
+            }
             Err(keyring::Error::NoEntry) => Ok(AppSnapshot::default()),
             Err(error) => Err(AppError::Storage(format!("本地令牌数据读取失败：{error}"))),
         }
@@ -51,6 +62,13 @@ impl SecureStore {
             .map_err(|error| AppError::Storage(format!("连接配置安全保存失败：{error}")))
     }
 
+    pub fn clear_legacy_translation_config(&self) -> Result<(), AppError> {
+        match self.entry("translation-config")?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err(AppError::Storage("旧翻译凭证清除失败。".into())),
+        }
+    }
+
     pub fn load_cloudflare_token(&self) -> Result<Option<String>, AppError> {
         match self.entry("cloudflare-token")?.get_password() {
             Ok(token) => Ok(Some(token)),
@@ -69,22 +87,6 @@ impl SecureStore {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(_) => Err(AppError::Storage("Cloudflare 安全配置清除失败。".into())),
         }
-    }
-
-    pub fn load_translation(&self) -> Result<crate::translation::StoredTranslationConfig, AppError> {
-        match self.entry("translation-config")?.get_password() {
-            Ok(value) => serde_json::from_str(&value)
-                .map_err(|_| AppError::Storage("翻译配置格式无效。".into())),
-            Err(keyring::Error::NoEntry) => Ok(Default::default()),
-            Err(_) => Err(AppError::Storage("翻译安全配置读取失败。".into())),
-        }
-    }
-
-    pub fn save_translation(&self, config: &crate::translation::StoredTranslationConfig) -> Result<(), AppError> {
-        let value = serde_json::to_string(config)
-            .map_err(|_| AppError::Storage("翻译配置序列化失败。".into()))?;
-        self.entry("translation-config")?.set_password(&value)
-            .map_err(|_| AppError::Storage("翻译配置安全保存失败。".into()))
     }
 
     fn entry(&self, account: &str) -> Result<Entry, AppError> {

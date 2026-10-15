@@ -1,12 +1,8 @@
 import { configureCloseBehavior, initWindowControls, updateWindowTitle } from "./window-controls";
 import { listen } from "@tauri-apps/api/event";
 import { appApi } from "./api";
-import type { ApiToken, AppSnapshot, CloudflareZone, DnsRecord, DnsRecordInput, TokenGroup, TranslationSettings, UsageLog } from "./domain";
-import { languageOptions } from "./translation";
-import { icon, renderIcons } from "./icons";
+import type { ApiToken, AppSnapshot, CloudflareZone, DnsRecord, DnsRecordInput, TokenGroup, UsageLog } from "./domain";
 import "./styles.css";
-
-const supportsRegionScreenshot = navigator.userAgent.includes("Windows");
 const appElement = document.querySelector<HTMLDivElement>("#app");
 
 if (!appElement) {
@@ -22,7 +18,7 @@ const state: {
   notice: { type: "success" | "error" | "info"; text: string } | null;
   loading: boolean;
   showSettings: boolean;
-  page: "home" | "logs" | "settings" | "tools" | "domains";
+  page: "home" | "logs" | "settings" | "domains";
   cloudflareTokenConfigured: boolean;
   cloudflareZones: CloudflareZone[];
   selectedZone: CloudflareZone | null;
@@ -33,17 +29,14 @@ const state: {
   usageLogs: UsageLog[];
   usageTotal: number;
   usagePage: number;
-  shortcutDraft: string | null;
-  shortcutWarning: string | null;
-  translationSettings: TranslationSettings;
 } = {
-  snapshot: { connection: null, tokens: [], groups: [], lastSyncedAt: null, closeToTray: false, screenshotShortcut: "Ctrl+Shift+S" },
+  snapshot: { connection: null, tokens: [], groups: [], lastSyncedAt: null, closeToTray: false },
   selectedTokenId: null,
   selectedGroupId: null,
   notice: null,
   loading: false,
   showSettings: false,
-  page: "tools",
+  page: "home",
   cloudflareTokenConfigured: false,
   cloudflareZones: [],
   selectedZone: null,
@@ -54,18 +47,7 @@ const state: {
   usageLogs: [],
   usageTotal: 0,
   usagePage: 1,
-  shortcutDraft: null,
-  shortcutWarning: null,
-  translationSettings: {
-    provider: "google_free", sourceLanguage: "auto", targetLanguage: "zh-CN", baseUrl: "https://api.openai.com/v1",
-    model: "gpt-4o-mini", apiKeyConfigured: false, customProxy: "", fontScale: 1, consent: false,
-  },
 };
-
-let shortcutRecordingRequested = false;
-let shortcutRecordingReady = false;
-let shortcutRecordingVersion = 0;
-let shortcutRecordingUpdates: Promise<void> = Promise.resolve();
 
 function escapeHtml(value: string): string {
   return value
@@ -140,7 +122,7 @@ function renderDnsEditor(): string {
       <div class="dns-field-caa dns-form-grid" hidden><label><span>Flags</span><input name="flags" type="number" min="0" max="255" value="${escapeHtml(draft?.flags ?? String(data.flags ?? 0))}" /></label><label><span>Tag</span><select name="caaTag">${["issue", "issuewild", "iodef"].map((tag) => `<option value="${tag}" ${(draft?.caaTag ?? String(data.tag ?? "issue")) === tag ? "selected" : ""}>${tag}</option>`).join("")}</select></label>${textField("caaValue", "值", String(data.value ?? ""), "ca.example.com")}</div>
     </div>
     <p class="dns-field-content dns-form-help">名称可填写 @、子域名或当前域名内的完整名称。SRV 名称格式为 _sip._tcp。</p>
-    <div class="shortcut-setting-actions"><button class="primary-button" type="submit" ${state.loading ? "disabled" : ""}>${state.loading ? "保存中..." : "保存记录"}</button></div>
+    <div class="action-buttons"><button class="primary-button" type="submit" ${state.loading ? "disabled" : ""}>${state.loading ? "保存中..." : "保存记录"}</button></div>
   </form>`;
 }
 
@@ -148,11 +130,6 @@ function renderUsageLog(log: UsageLog): string {
   const date = log.createdAt > 0 ? new Date(log.createdAt * 1000).toLocaleString() : "—";
   const tokenCount = log.promptTokens + log.completionTokens;
   return `<tr><td>${escapeHtml(date)}</td><td><strong>${escapeHtml(log.username || "—")}</strong><small>${escapeHtml(log.tokenName || "—")}</small></td><td>${escapeHtml(log.modelName || "—")}</td><td>${escapeHtml(log.channelName || "—")}</td><td>${escapeHtml(log.group || "—")}</td><td>${log.quota.toLocaleString()}</td><td>${tokenCount.toLocaleString()}<small>输入 ${log.promptTokens.toLocaleString()} · 输出 ${log.completionTokens.toLocaleString()}</small></td><td>${log.useTime.toLocaleString()} 秒${log.isStream ? " · 流式" : ""}</td></tr>`;
-}
-
-function renderLanguageOptions(selected: string, includeAuto = false): string {
-  const options = includeAuto ? [["auto", "自动检测"], ["en", "英语"], ["zh-CN", "简体中文"]] : languageOptions;
-  return options.map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
 }
 
 function renderGroup(group: TokenGroup): string {
@@ -171,7 +148,6 @@ function renderGroup(group: TokenGroup): string {
 }
 
 function render(): void {
-  endShortcutRecording();
   configureCloseBehavior(state.snapshot.closeToTray);
   if (state.selectedTokenId && !state.snapshot.tokens.some((token) => token.id === state.selectedTokenId)) {
     state.selectedTokenId = null;
@@ -194,7 +170,7 @@ function render(): void {
           <span class="brand-mark">D</span>
           <span>
             <strong>DeskTool</strong>
-            <small>桌面工具集</small>
+            <small>NewAPI · Cloudflare</small>
           </span>
         </div>
         <div class="topbar-actions">
@@ -205,7 +181,6 @@ function render(): void {
               <button data-page="logs" type="button">使用日志</button>
               <button data-page="domains" type="button">域名管理</button>
               <button data-page="settings" type="button">设置</button>
-              <button data-page="tools" type="button">工具集</button>
             </div>
           </details>
           <span class="sync-label"><span class="status-dot ${connection ? "online" : "offline"}"></span>${connection ? "已配置" : "未配置"}</span>
@@ -213,27 +188,7 @@ function render(): void {
       </header>
 
       <main class="content">
-        ${state.page === "tools" ? `
-          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="domains" type="button">Cloudflare DNS</button><button class="secondary-button" data-page="home" type="button">返回管理</button></div></section>
-          <section class="intro"><div><p class="eyebrow">DeskTool 工具集</p><h1>工具集</h1><p class="intro-copy">快捷启动常用桌面工具。</p></div></section>
-          ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
-          <section class="panel tools-panel">
-            <div class="panel-heading"><div><p class="section-kicker">屏幕工具</p><h2>区域截图</h2></div><kbd>${supportsRegionScreenshot ? escapeHtml(state.snapshot.screenshotShortcut.replaceAll("+", " + ")) : "Windows 专属"}</kbd></div>
-            <p class="intro-copy">${supportsRegionScreenshot ? "在主显示器上框选区域，可保存为 PNG 图片或直接复制到剪贴板。" : "区域截图目前仅支持 Windows。"}</p>
-            ${state.shortcutWarning ? `<p class="shortcut-warning">${escapeHtml(state.shortcutWarning)}</p>` : ""}
-            <button class="primary-button" id="start-screenshot" type="button" ${supportsRegionScreenshot ? "" : "disabled"}>开始区域截图</button>
-          </section>
-          <section class="translation-tool">
-            <div class="panel-heading"><h2>图片翻译</h2><span class="translation-channel">${state.translationSettings.provider === "openai" ? "OpenAI" : "Google Translate（Free）"}</span></div>
-            <div class="translation-tool-status"><span>${languageOptions.find(([value]) => value === state.translationSettings.targetLanguage)?.[1] ?? "简体中文"}</span><span>${state.translationSettings.consent ? "已授权文字上传" : "待确认文字上传"}</span></div>
-            <div class="shortcut-setting-actions"><button id="translation-screenshot" class="primary-button icon-command" type="button" ${supportsRegionScreenshot && !state.loading ? "" : "disabled"}>${icon("scan-text")}截图</button><button class="secondary-button icon-command" data-page="settings" type="button">${icon("settings-2")}配置</button></div>
-          </section>
-          <section class="translation-tool cloudflare-tool">
-            <div class="panel-heading"><h2>Cloudflare DNS</h2><span class="translation-channel">${state.cloudflareTokenConfigured ? "Token 已配置" : "尚未配置"}</span></div>
-            <p class="intro-copy">查看 Cloudflare 域名并管理 DNS 解析记录。</p>
-            <button class="primary-button" data-page="domains" type="button">打开域名管理</button>
-          </section>
-        ` : state.page === "home" ? `
+        ${state.page === "home" ? `
         <section class="compact-toolbar" aria-label="紧凑模式操作">
           <label for="compact-token">API 令牌</label>
           <select id="compact-token" ${state.loading ? "disabled" : ""}>
@@ -244,7 +199,6 @@ function render(): void {
             <button class="secondary-button" data-page="logs" type="button">日志</button>
             <button class="secondary-button" data-page="domains" type="button">域名</button>
             <button class="secondary-button" data-page="settings" type="button">设置</button>
-            <button class="secondary-button" data-page="tools" type="button">工具</button>
             <button class="secondary-button" id="compact-sync" type="button" ${state.loading ? "disabled" : ""}>${state.loading ? "处理中..." : "同步"}</button>
             <button class="secondary-button" id="toggle-settings" type="button" aria-expanded="${state.showSettings}">${state.showSettings ? "收起配置" : "连接配置"}</button>
           </div>
@@ -327,7 +281,7 @@ function render(): void {
             <div class="log-pagination"><span>共 ${state.usageTotal} 条 · 第 ${state.usagePage} 页</span><div><button class="secondary-button" id="logs-prev" type="button" ${state.loading || state.usagePage <= 1 ? "disabled" : ""}>上一页</button><button class="secondary-button" id="logs-next" type="button" ${state.loading || state.usagePage * 50 >= state.usageTotal ? "disabled" : ""}>下一页</button></div></div>
           </section>
         ` : state.page === "domains" ? `
-          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="tools" type="button">工具</button>${state.selectedZone ? '<button class="secondary-button cloudflare-back-zones" type="button">返回域名</button>' : ""}<button class="secondary-button cloudflare-refresh" type="button" ${state.loading ? "disabled" : ""}>刷新</button>${state.selectedZone ? '<button class="primary-button cloudflare-add-record" type="button">新增记录</button>' : ""}<button class="secondary-button" data-page="settings" type="button">设置</button></div></section>
+          <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">令牌管理</button>${state.selectedZone ? '<button class="secondary-button cloudflare-back-zones" type="button">返回域名</button>' : ""}<button class="secondary-button cloudflare-refresh" type="button" ${state.loading ? "disabled" : ""}>刷新</button>${state.selectedZone ? '<button class="primary-button cloudflare-add-record" type="button">新增记录</button>' : ""}<button class="secondary-button" data-page="settings" type="button">设置</button></div></section>
           <section class="intro"><div><p class="eyebrow">Cloudflare</p><h1>${state.selectedZone ? escapeHtml(state.selectedZone.name) : "域名管理"}</h1><p class="intro-copy">${state.selectedZone ? "管理此域名的 DNS 解析记录。" : "查看当前 API Token 可访问的 Cloudflare 域名。"}</p></div><div class="dns-page-actions">${state.selectedZone ? '<button class="secondary-button cloudflare-back-zones" type="button">返回域名</button>' : ""}<button class="secondary-button cloudflare-refresh" type="button" ${state.loading ? "disabled" : ""}>${state.loading ? "读取中..." : "刷新"}</button>${state.selectedZone ? '<button class="primary-button cloudflare-add-record" type="button">新增记录</button>' : ""}</div></section>
           ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
           ${!state.cloudflareTokenConfigured ? '<section class="panel cloudflare-empty"><h2>尚未配置 API Token</h2><p class="intro-copy">请先在设置页面添加 Cloudflare API Token，并授予 Zone:Read 与 DNS:Edit 权限。</p><button class="primary-button" data-page="settings" type="button">前往设置</button></section>' : state.selectedZone ? `
@@ -338,55 +292,19 @@ function render(): void {
           ` : `<section class="zone-grid">${state.cloudflareZones.length ? state.cloudflareZones.map(renderCloudflareZone).join("") : `<div class="panel empty-state">${state.loading ? "正在读取域名..." : "没有找到可访问的域名。请检查 Token 的 Zone:Read 权限。"}</div>`}</section>`}
         ` : `
           <section class="compact-toolbar compact-page-toolbar"><div class="compact-actions"><button class="secondary-button" data-page="home" type="button">返回管理</button><button class="secondary-button" data-page="logs" type="button">日志</button><button class="secondary-button" data-page="domains" type="button">域名</button></div></section>
-          <section class="intro"><div><p class="eyebrow">偏好设置</p><h1>设置</h1><p class="intro-copy">调整窗口行为和截图快捷键。</p></div><button class="secondary-button" data-page="domains" type="button">Cloudflare 域名管理</button></section>
+          <section class="intro"><div><p class="eyebrow">偏好设置</p><h1>设置</h1><p class="intro-copy">调整主窗口行为。</p></div><button class="secondary-button" data-page="domains" type="button">Cloudflare 域名管理</button></section>
           ${state.notice ? `<div class="notice ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
           <section class="panel settings-panel">
             <p class="section-kicker">窗口行为</p><h2>关闭按钮</h2>
             <label class="setting-option"><input type="radio" name="close-behavior" value="tray" ${state.snapshot.closeToTray ? "checked" : ""} ${state.loading ? "disabled" : ""}/><span><strong>最小化到系统托盘</strong><small>关闭窗口时隐藏主窗口，应用继续在后台运行。</small></span></label>
             <label class="setting-option"><input type="radio" name="close-behavior" value="exit" ${state.snapshot.closeToTray ? "" : "checked"} ${state.loading ? "disabled" : ""}/><span><strong>直接关闭应用</strong><small>关闭窗口时退出 DeskTool。</small></span></label>
           </section>
-          <section class="panel settings-panel shortcut-panel">
-            <p class="section-kicker">截图工具</p><h2>全局快捷键</h2>
-            <form id="screenshot-shortcut-form">
-              <label for="screenshot-shortcut"><span>截图快捷键</span></label>
-              <input id="screenshot-shortcut" type="text" value="${escapeHtml(state.shortcutDraft ?? state.snapshot.screenshotShortcut)}" readonly autocomplete="off" aria-describedby="shortcut-help" ${!supportsRegionScreenshot || state.loading ? "disabled" : ""} />
-              <p id="shortcut-help" class="intro-copy">${supportsRegionScreenshot ? "点击输入框后按下组合键。需包含 Ctrl 或 Alt，加字母、数字或 F1–F12。Esc 恢复已保存的组合键。" : "区域截图目前仅支持 Windows。"}</p>
-              ${state.shortcutWarning ? `<p class="shortcut-warning">${escapeHtml(state.shortcutWarning)}</p>` : ""}
-              <div class="shortcut-setting-actions">
-                <button class="primary-button" type="submit" ${!supportsRegionScreenshot || state.loading ? "disabled" : ""}>保存快捷键</button>
-                <button class="secondary-button" id="reset-screenshot-shortcut" type="button" ${!supportsRegionScreenshot || state.loading ? "disabled" : ""}>恢复默认</button>
-              </div>
-            </form>
-          </section>
           <section class="panel settings-panel cloudflare-settings">
             <p class="section-kicker">Cloudflare DNS</p><h2>API Token</h2>
-            <form id="cloudflare-token-form" class="translation-form">
+            <form id="cloudflare-token-form" class="cloudflare-token-form">
               <label><span>Cloudflare API Token</span><input name="cloudflareToken" type="password" autocomplete="off" placeholder="${state.cloudflareTokenConfigured ? "已配置，输入新 Token 可替换" : "粘贴 Cloudflare API Token"}" ${state.loading ? "disabled" : ""}/></label>
-              <p class="translation-security-note">Token 仅存储在系统密钥环中，不会返回前端。建议仅授予 Zone:Read 与 DNS:Edit 权限。保存时会先验证 Token。</p>
-              <div class="shortcut-setting-actions"><button class="primary-button" type="submit" ${state.loading ? "disabled" : ""}>验证并保存 Token</button><button class="secondary-button" id="clear-cloudflare-token" type="button" ${state.loading || !state.cloudflareTokenConfigured ? "disabled" : ""}>清除 Token</button><button class="secondary-button" data-page="domains" type="button">域名管理</button></div>
-            </form>
-          </section>
-          <section class="translation-settings-panel">
-            <p class="section-kicker">图片翻译</p><h2>翻译渠道</h2>
-            <form id="translation-form" class="translation-form">
-              <label><span>渠道</span><select name="provider" ${state.loading ? "disabled" : ""}>
-                <option value="google_free" ${state.translationSettings.provider === "google_free" ? "selected" : ""}>Google Translate（Free）</option>
-                <option value="openai" ${state.translationSettings.provider === "openai" ? "selected" : ""}>OpenAI 协议</option>
-              </select></label>
-              <div class="translation-fields">
-                <label><span>识别语言</span><select name="sourceLanguage" ${state.loading ? "disabled" : ""}>${renderLanguageOptions(state.translationSettings.sourceLanguage, true)}</select></label>
-                <label><span>目标语言</span><select name="targetLanguage" ${state.loading ? "disabled" : ""}>${renderLanguageOptions(state.translationSettings.targetLanguage)}</select></label>
-              </div>
-              <div id="openai-fields" class="translation-form" ${state.translationSettings.provider === "openai" ? "" : "hidden"}>
-                <label><span>OpenAI Base URL</span><input name="baseUrl" type="url" value="${escapeHtml(state.translationSettings.baseUrl)}" placeholder="https://api.openai.com/v1" ${state.loading || state.translationSettings.provider !== "openai" ? "disabled" : ""}/></label>
-                <label><span>模型名称</span><input name="model" value="${escapeHtml(state.translationSettings.model)}" placeholder="gpt-4o-mini" ${state.loading || state.translationSettings.provider !== "openai" ? "disabled" : ""}/></label>
-                <label><span>OpenAI API Key</span><input name="apiKey" type="password" placeholder="${state.translationSettings.apiKeyConfigured ? "已配置，输入新 Key 可替换" : "输入独立 API Key"}" autocomplete="off" ${state.loading || state.translationSettings.provider !== "openai" ? "disabled" : ""}/></label>
-              </div>
-              <label><span>HTTP 代理（可选）</span><input name="customProxy" value="${escapeHtml(state.translationSettings.customProxy)}" placeholder="http://127.0.0.1:7890" ${state.loading ? "disabled" : ""}/></label>
-              <label><span>默认译文字号</span><input name="fontScale" type="range" min="0.6" max="2" step="0.1" value="${state.translationSettings.fontScale}" aria-label="默认译文字号" ${state.loading ? "disabled" : ""}/></label>
-              <label class="setting-option translation-consent"><input name="consent" type="checkbox" ${state.translationSettings.consent ? "checked" : ""} ${state.loading ? "disabled" : ""}/><span><strong>允许发送识别文字</strong><small>图片只在本地 OCR；译文渠道会收到 OCR 原文，不会收到图片。</small></span></label>
-              <p class="translation-security-note">Key 使用系统安全存储，不会显示完整内容。Google Free 接口可能限流或变化。</p>
-              <div class="shortcut-setting-actions"><button class="primary-button" type="submit" ${state.loading ? "disabled" : ""}>保存翻译配置</button><button class="secondary-button" id="clear-translation-key" type="button" ${state.loading || !state.translationSettings.apiKeyConfigured ? "disabled" : ""}>清除 OpenAI Key</button></div>
+              <p class="security-note">Token 仅存储在系统密钥环中，不会返回前端。建议仅授予 Zone:Read 与 DNS:Edit 权限。保存时会先验证 Token。</p>
+              <div class="action-buttons"><button class="primary-button" type="submit" ${state.loading ? "disabled" : ""}>验证并保存 Token</button><button class="secondary-button" id="clear-cloudflare-token" type="button" ${state.loading || !state.cloudflareTokenConfigured ? "disabled" : ""}>清除 Token</button><button class="secondary-button" data-page="domains" type="button">域名管理</button></div>
             </form>
           </section>
         `}
@@ -396,7 +314,6 @@ function render(): void {
   `;
 
   bindEvents();
-  renderIcons();
   updateWindowTitle(selectedToken?.name ?? null);
 }
 
@@ -413,92 +330,7 @@ function selectToken(tokenId: string | null): void {
   render();
 }
 
-function beginShortcutRecording(input: HTMLInputElement): void {
-  shortcutRecordingRequested = true;
-  shortcutRecordingReady = false;
-  const version = ++shortcutRecordingVersion;
-  const help = document.querySelector<HTMLElement>("#shortcut-help");
-  if (help) help.textContent = "正在准备快捷键录入...";
-  shortcutRecordingUpdates = shortcutRecordingUpdates.then(async () => {
-    await appApi.setScreenshotShortcutRecording(true);
-    if (version === shortcutRecordingVersion && shortcutRecordingRequested && document.activeElement === input) {
-      shortcutRecordingReady = true;
-      if (help) help.textContent = "请按下组合键，需包含 Ctrl 或 Alt，加字母、数字或 F1–F12。";
-    }
-  }).catch(() => {
-    if (version === shortcutRecordingVersion) setNotice("error", "快捷键录入初始化失败，请重新点击输入框。");
-  });
-}
-
-function endShortcutRecording(): void {
-  if (!shortcutRecordingRequested) return;
-  shortcutRecordingRequested = false;
-  shortcutRecordingReady = false;
-  const version = ++shortcutRecordingVersion;
-  shortcutRecordingUpdates = shortcutRecordingUpdates
-    .then(() => appApi.setScreenshotShortcutRecording(false))
-    .catch((error) => {
-      if (version === shortcutRecordingVersion) {
-        state.shortcutWarning = getErrorMessage(error, "截图快捷键恢复失败，请重新保存组合键。");
-        setNotice("error", state.shortcutWarning);
-      }
-    });
-}
-
-function recordShortcut(event: KeyboardEvent, input: HTMLInputElement): void {
-  if (event.key === "Tab") return;
-  event.preventDefault();
-  if (event.key === "Escape") {
-    state.shortcutDraft = null;
-    input.value = state.snapshot.screenshotShortcut;
-    input.blur();
-    return;
-  }
-  if (event.repeat || event.isComposing || !shortcutRecordingReady) return;
-  if (event.key === "Control" || event.key === "Alt" || event.key === "Shift" || event.key === "Meta") return;
-  const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3)
-    : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5)
-    : /^F([1-9]|1[0-2])$/.test(event.code) ? event.code : null;
-  const help = document.querySelector<HTMLElement>("#shortcut-help");
-  if ((!event.ctrlKey && !event.altKey) || event.metaKey || !key) {
-    if (help) help.textContent = "请按 Ctrl 或 Alt，加字母、数字或 F1–F12；可同时使用 Shift。";
-    return;
-  }
-  const modifiers = [event.ctrlKey ? "Ctrl" : "", event.altKey ? "Alt" : "", event.shiftKey ? "Shift" : ""].filter(Boolean);
-  state.shortcutDraft = [...modifiers, key].join("+");
-  input.value = state.shortcutDraft;
-  if (help) help.textContent = "组合键已录入，点击“保存快捷键”立即生效。";
-}
-
 function bindEvents(): void {
-  const shortcutInput = document.querySelector<HTMLInputElement>("#screenshot-shortcut");
-  if (shortcutInput) {
-    shortcutInput.addEventListener("focus", () => beginShortcutRecording(shortcutInput));
-    shortcutInput.addEventListener("blur", endShortcutRecording);
-    shortcutInput.addEventListener("keydown", (event) => recordShortcut(event, shortcutInput));
-  }
-  document.querySelector<HTMLFormElement>("#screenshot-shortcut-form")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void saveScreenshotShortcut(state.shortcutDraft ?? state.snapshot.screenshotShortcut);
-  });
-  document.querySelector<HTMLButtonElement>("#reset-screenshot-shortcut")?.addEventListener("click", () => {
-    void saveScreenshotShortcut("Ctrl+Shift+S");
-  });
-  document.querySelector<HTMLSelectElement>('#translation-form select[name="provider"]')?.addEventListener("change", (event) => {
-    const fields = document.querySelector<HTMLElement>("#openai-fields");
-    if (fields) {
-      fields.hidden = (event.currentTarget as HTMLSelectElement).value !== "openai";
-      fields.querySelectorAll<HTMLInputElement>("input").forEach((input) => { input.disabled = fields.hidden || state.loading; });
-    }
-  });
-  document.querySelector<HTMLFormElement>("#translation-form")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void saveTranslationSettings(event.currentTarget as HTMLFormElement, false);
-  });
-  document.querySelector<HTMLButtonElement>("#clear-translation-key")?.addEventListener("click", () => {
-    const form = document.querySelector<HTMLFormElement>("#translation-form");
-    if (form) void saveTranslationSettings(form, true);
-  });
   document.querySelectorAll<HTMLButtonElement>("[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
       const menu = button.closest(".window-menu") as HTMLDetailsElement | null;
@@ -508,10 +340,6 @@ function bindEvents(): void {
       else if (page === "domains") void openCloudflareDomains();
       else if (page === "settings") {
         state.page = "settings";
-        state.notice = null;
-        render();
-      } else if (page === "tools") {
-        state.page = "tools";
         state.notice = null;
         render();
       } else if (page === "home") {
@@ -579,18 +407,6 @@ function bindEvents(): void {
   document.querySelector<HTMLSelectElement>('#dns-record-form select[name="recordType"]')?.addEventListener("change", (event) => updateDnsFormFields((event.currentTarget as HTMLSelectElement).value));
   document.querySelector<HTMLSelectElement>('#dns-record-form select[name="proxied"]')?.addEventListener("change", () => updateDnsFormFields(document.querySelector<HTMLSelectElement>('#dns-record-form select[name="recordType"]')?.value ?? "A"));
   if (state.showDnsForm) updateDnsFormFields(state.dnsFormDraft?.recordType ?? state.editingDnsRecord?.recordType ?? "A");
-  document.querySelector<HTMLButtonElement>("#translation-screenshot")?.addEventListener("click", () => {
-    if (!state.translationSettings.consent || state.translationSettings.provider === "openai" && !state.translationSettings.apiKeyConfigured) {
-      state.page = "settings";
-      setNotice("info", "请先保存翻译渠道并确认文字上传授权。");
-      document.querySelector("#translation-form")?.scrollIntoView({ block: "start" });
-      return;
-    }
-    void appApi.startScreenshot().catch((error) => setNotice("error", getErrorMessage(error, "启动区域截图失败。")));
-  });
-  document.querySelector<HTMLButtonElement>("#start-screenshot")?.addEventListener("click", () => {
-    void appApi.startScreenshot().catch((error) => setNotice("error", getErrorMessage(error, "启动区域截图失败。")));
-  });
   document.querySelector<HTMLButtonElement>("#logs-prev")?.addEventListener("click", () => void openUsageLogs(state.usagePage - 1));
   document.querySelector<HTMLButtonElement>("#logs-next")?.addEventListener("click", () => void openUsageLogs(state.usagePage + 1));
   document.querySelectorAll<HTMLInputElement>('input[name="close-behavior"]').forEach((input) => {
@@ -854,31 +670,6 @@ async function openUsageLogs(page: number): Promise<void> {
   }
 }
 
-async function saveTranslationSettings(form: HTMLFormElement, clearApiKey: boolean): Promise<void> {
-  if (state.loading) return;
-  const data = new FormData(form);
-  const settings: TranslationSettings = {
-    ...state.translationSettings,
-    provider: String(data.get("provider")) as TranslationSettings["provider"],
-    sourceLanguage: String(data.get("sourceLanguage")),
-    targetLanguage: String(data.get("targetLanguage")),
-    baseUrl: String(data.get("baseUrl") ?? state.translationSettings.baseUrl).trim(),
-    model: String(data.get("model") ?? state.translationSettings.model).trim(),
-    customProxy: String(data.get("customProxy")).trim(),
-    consent: data.get("consent") === "on",
-    fontScale: Number(data.get("fontScale")),
-  };
-  state.loading = true;
-  state.notice = null;
-  render();
-  try {
-    state.translationSettings = await appApi.saveTranslationSettings(settings, clearApiKey ? "" : String(data.get("apiKey") ?? ""), clearApiKey);
-    state.notice = { type: "success", text: "图片翻译配置已保存。" };
-  } catch (error) {
-    state.notice = { type: "error", text: getErrorMessage(error, "保存图片翻译配置失败，原设置未改变。") };
-  } finally { state.loading = false; render(); }
-}
-
 async function saveCloseBehavior(closeToTray: boolean): Promise<void> {
   if (state.loading) return;
   state.loading = true;
@@ -889,26 +680,6 @@ async function saveCloseBehavior(closeToTray: boolean): Promise<void> {
     state.notice = { type: "success", text: "关闭按钮设置已保存。" };
   } catch (error) {
     state.notice = { type: "error", text: getErrorMessage(error, "保存设置失败。") };
-  } finally {
-    state.loading = false;
-    render();
-  }
-}
-
-async function saveScreenshotShortcut(shortcut: string): Promise<void> {
-  if (!supportsRegionScreenshot || state.loading) return;
-  state.loading = true;
-  state.notice = null;
-  endShortcutRecording();
-  render();
-  try {
-    await shortcutRecordingUpdates;
-    state.snapshot = await appApi.setScreenshotShortcut(shortcut);
-    state.shortcutDraft = null;
-    state.shortcutWarning = null;
-    state.notice = { type: "success", text: "截图快捷键已保存并立即生效。" };
-  } catch (error) {
-    state.notice = { type: "error", text: getErrorMessage(error, "保存截图快捷键失败，原设置保留。") };
   } finally {
     state.loading = false;
     render();
@@ -987,25 +758,15 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 async function init(): Promise<void> {
-  window.addEventListener("blur", endShortcutRecording);
-  window.addEventListener("focus", () => {
-    const input = document.querySelector<HTMLInputElement>("#screenshot-shortcut");
-    if (input && !input.disabled && document.activeElement === input && !shortcutRecordingRequested) beginShortcutRecording(input);
-  });
   state.loading = true;
   render();
   void initWindowControls((message) => setNotice("error", message));
   void listen<string>("navigate", (event) => {
     if (event.payload === "logs") void openUsageLogs(1);
   }).catch(() => setNotice("error", "系统托盘导航初始化失败。"));
-  void listen<string>("screenshot-error", (event) => {
-    setNotice("error", event.payload || "区域截图启动失败。");
-  }).catch(() => setNotice("error", "截图快捷键监听初始化失败。"));
   try {
     state.snapshot = await appApi.getSnapshot();
-    state.translationSettings = await appApi.getTranslationSettings();
     state.cloudflareTokenConfigured = await appApi.getCloudflareTokenConfigured();
-    if (supportsRegionScreenshot) state.shortcutWarning = await appApi.getScreenshotShortcutWarning();
   } catch (error) {
     state.notice = { type: "error", text: getErrorMessage(error, "读取本地数据失败。") };
   } finally {

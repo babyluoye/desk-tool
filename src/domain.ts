@@ -27,7 +27,6 @@ export interface AppSnapshot {
   groups: TokenGroup[];
   lastSyncedAt: string | null;
   closeToTray: boolean;
-  screenshotShortcut: string;
 }
 
 export interface SyncResult {
@@ -91,39 +90,4 @@ export interface DnsRecordInput {
   proxied: boolean;
   priority: number | null;
   data: Record<string, unknown> | null;
-}
-
-export type TranslationProvider = "google_free" | "openai";
-export interface TranslationSettings {
-  provider: TranslationProvider;
-  sourceLanguage: string;
-  targetLanguage: string;
-  baseUrl: string;
-  model: string;
-  apiKeyConfigured: boolean;
-  customProxy: string;
-  fontScale: number;
-  consent: boolean;
-}
-export interface OcrRegion {
-  id: number;
-  text: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-export interface OcrDocument { width: number; height: number; regions: OcrRegion[] }
-export interface TranslationOutput {
-  document: OcrDocument;
-  translations: string[];
-  provider: TranslationProvider;
-  targetLanguage: string;
-}
-export interface TranslationJob {
-  id: string;
-  status: "queued" | "recognizing" | "translating" | "success" | "error" | "cancelled";
-  error: string | null;
-  document: OcrDocument | null;
-  output: TranslationOutput | null;
 }

@@ -2,32 +2,14 @@
 
 ## 项目说明
 
-这是一个 Rust + Tauri 2 桌面工具集项目，包含可置顶、可缩窄的主窗口和系统托盘。NewAPI 令牌分组管理是其中的辅助工具，不代表项目整体定位。
+DeskTool 是 Rust + Tauri 2 桌面应用，提供 NewAPI 令牌分组管理、Cloudflare DNS 管理，以及通用主窗口和系统托盘功能。
 
-当前已确认的产品方向：
-
-- DeskTool 作为桌面工具集逐步提供独立实用工具，NewAPI 管理只是一个辅助功能。
-- Windows 支持可配置的全局快捷键区域截图；默认 Ctrl+Shift+S，区域可保存为 PNG 或复制到剪贴板。截图图像和标注仅临时保存在内存中；确认选区后可以移动或调整边缘，并绘制红框或马赛克，支持撤销/清除；保存与复制结果包含标注。
-- 截图选区可作为独立置顶贴图显示，支持多张、拖动、调整窗口大小和关闭；激活贴图后可滚轮等比缩放，激活边框为蓝色、失焦边框为灰色。贴图包含标注，图片只存在内存中，关闭后释放。
-- Windows 图片翻译作为独立工具，入口为截图选区和现有贴图；本地 Tesseract.js 识别英文/简中，支持 OpenAI Chat Completions 和 Google Translate Free 两个文字翻译渠道。
-- 图片翻译只识别最终含标注的图片；图片、OCR 原文和译文仅在内存中保存。用户明确同意后仅将文字发送所选渠道，不上传图片、不保存历史、不记录内容日志。
-- 翻译凭证使用独立系统密钥环配置，不复用 NewAPI 管理凭证或页面所选令牌；修改服务域名必须重新提供 Key 或清除旧 Key。
-- 贴图翻译支持原位置覆盖、原图切换、文字选择和原文/译文复制；移动模式滚轮缩放，文字选择和文本视图内不触发窗口拖动或滚轮缩放。
-- OCR Worker、WASM 和英文/简中语言资源随应用内嵌，不运行时访问 CDN；资源版本/来源/校验值在 scripts/ocr-assets.json 记录。
-- 主页面管理一个 NewAPI 地址和管理凭证。
-- Cloudflare DNS 是 DeskTool 的独立辅助工具：设置页配置单个 Cloudflare API Token，域名页只展示 Token 可访问的 Zone 并管理 DNS 记录，不创建或删除 Zone。
-- Cloudflare Token 与 NewAPI 管理凭证、API 令牌、图片翻译凭证完全独立，使用单独系统密钥环条目；不得写入普通快照、日志或返回前端。
-- Cloudflare DNS 请求只从 Rust 后端访问固定 Cloudflare API origin；域名/记录列表按需获取，不持久化。DNS 修改成功后才刷新页面列表。
-- 管理凭证与 API 令牌是两类不同的数据，不能混用。
-- API 令牌和分组从 NewAPI 服务端同步。
-- API 令牌需要在本地安全保存。
-- 不保留 NewAPI 独立悬浮窗或悬浮窗专用的刷新、失焦透明度逻辑；截图贴图作为独立工具窗口保留。
-- 主窗口最小宽度为 200px，小于 300px 时以分组为主，并可切换所选 API 令牌。
-- 主窗口支持置顶；窄窗口标题显示所选令牌名称，不显示完整 API key。
-- 主窗口最小化后隐藏到系统托盘，托盘图标和菜单可恢复主窗口或退出应用。
-- 主页面先选择一个 API 令牌，再选择分组并提交更新；使用管理凭证写入 NewAPI 服务端。
-- 服务端更新成功后再更新本地数据；失败时保留原本地状态并提示错误。
-- 所选令牌和分组仅作为页面临时交互状态，不存在全局持久化的“当前令牌”或“当前分组”。
+- 主页面管理一个 NewAPI 地址和独立管理凭证；管理凭证与 API 令牌不可混用。
+- API 令牌和分组从 NewAPI 服务端同步，本地安全快照作为缓存。更新分组时服务端优先；仅服务端成功后更新本地状态。
+- Cloudflare DNS 是独立工具：单独设置 Cloudflare API Token，管理该 Token 可访问的 Zone 内 DNS 记录，不创建或删除 Zone。
+- Cloudflare Token 使用独立系统密钥环条目；请求仅由 Rust 后端访问固定 Cloudflare API origin，Zone/记录按需加载、不持久化。
+- 主窗口支持置顶，最小宽度 200px；窄窗口标题显示所选令牌名称而非 API key。最小化/关闭到系统托盘及恢复/退出是通用外壳功能。
+- 所选令牌和分组只作为页面临时交互状态，不持久化为全局当前选择。
 
 ## 工作边界
 
@@ -80,3 +62,17 @@
 - 主要行为变化。
 - 静态检查结果或检查范围。
 - 明确说明未执行构建、测试和运行验证。
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues for `babyluoye/desk-tool` using `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository; read the root `GLOSSARY.md` and relevant ADRs in `docs/adr/` when present. See `docs/agents/domain.md`.
